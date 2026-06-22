@@ -24,6 +24,7 @@ Setup / account:
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -42,7 +43,11 @@ from .pipeline.rename import rename_person as _rename_in
 app = FastAPI(title="Lucid", version="1.0.0")
 
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="lucid-pipe")
-WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+# Frozen (PyInstaller) builds bundle web/ as data; resolve it from _MEIPASS.
+if getattr(sys, "frozen", False):
+    WEB_DIR = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "web"
+else:
+    WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 MAX_UPLOAD = 400 * 1024 * 1024     # 400 MB cap on a public upload endpoint
 _START = time.time()
 
