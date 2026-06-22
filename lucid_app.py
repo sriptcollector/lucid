@@ -23,8 +23,12 @@ FROZEN = getattr(sys, "frozen", False)
 
 
 def _user_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or str(Path.home())
-    return Path(base) / "Lucid"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Lucid"
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    if base:
+        return Path(base) / "Lucid"
+    return Path.home() / ".lucid"
 
 
 # --- Set up per-user data dir + log BEFORE importing the server/config -------

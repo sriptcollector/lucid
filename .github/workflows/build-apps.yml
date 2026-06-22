@@ -1,0 +1,56 @@
+name: Build desktop apps
+
+# PyInstaller can't cross-compile, so we build the macOS app on GitHub's macOS
+# runners (Apple Silicon + Intel) and attach the results to the v1.0.0 release.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    name: macOS (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14   # Apple Silicon (arm64)
+            arch: arm64
+          - os: macos-13   # Intel (x86_64)
+            arch: intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt openai "pyinstaller>=6"
+
+      - name: Build Lucid.app
+        run: python build_exe.py
+
+      - name: Package the .app (ditto preserves the bundle + ad-hoc signature)
+        run: |
+          cd dist
+          ditto -c -k --keepParent Lucid.app "../Lucid-macOS-${{ matrix.arch }}.zip"
+          cd ..
+          ls -lah "Lucid-macOS-${{ matrix.arch }}.zip"
+
+      - name: Attach to the v1.0.0 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload v1.0.0 "Lucid-macOS-${{ matrix.arch }}.zip" --clobber --repo "${{ github.repository }}"
+
+      - name: Also keep as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lucid-macOS-${{ matrix.arch }}
+          path: Lucid-macOS-${{ matrix.arch }}.zip
