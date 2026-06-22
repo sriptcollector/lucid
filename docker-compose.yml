@@ -1,0 +1,22 @@
+services:
+  lucid:
+    build: .
+    ports:
+      - "8000:8000"
+    # All settings are written by the setup wizard to data/config.json (on the
+    # mounted volume below), so no .env is required. To use one anyway, create a
+    # .env next to this file and uncomment:
+    # env_file:
+    #   - path: .env
+    #     required: false
+    environment:
+      # The wizard must be completed from the host machine; for Docker, reach it
+      # at http://localhost:8000 (mapped below).
+      - HOST=0.0.0.0
+    volumes:
+      # Persist DB + audio across restarts
+      - ./data:/app/data
+      # Mount your Plaud USB / sync folder here so files auto-ingest.
+      # Change the left side to your device's NOTES/CALLS folder.
+      - ./data/inbox:/app/data/inbox
+    restart: unless-stopped

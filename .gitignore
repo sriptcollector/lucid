@@ -1,0 +1,28 @@
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# --- Secrets / local config ---
+.env
+
+# --- Runtime data (keep the dir, drop its contents) ---
+data/
+!data/.gitkeep
+
+# --- Local databases & logs ---
+*.db
+*.log
+
+# --- Build output / vendored binaries ---
+dist/
+bin/
+
+# --- Ingest bookkeeping (per-install state) ---
+.lucid_imported.json
+*.seen.json
+
+# --- OS / editor / JS tooling cruft ---
+.DS_Store
+node_modules/

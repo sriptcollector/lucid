@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
+  <meta name="theme-color" content="#faf9f5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Lucid" />
+  <title>Lucid</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="appbar">
+    <div class="brand">
+      <span class="rx">L</span>
+      <span class="wordmark">Lucid</span>
+    </div>
+    <div class="sub" id="subline">notes</div>
+    <div class="grow"></div>
+    <button class="iconbtn" id="themeBtn" title="Theme">&#9681;</button>
+  </header>
+
+  <main id="app"></main>
+
+  <nav class="tabbar">
+    <button data-tab="home" class="active"><span class="ic">&#9635;</span>Notes</button>
+    <button data-tab="search"><span class="ic">&#9906;</span>Search</button>
+    <button data-tab="people"><span class="ic">&#9737;</span>People</button>
+    <button data-tab="ventures"><span class="ic">&#9671;</span>Ideas</button>
+    <button data-tab="settings"><span class="ic">&#9881;</span>Settings</button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

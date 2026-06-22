@@ -1,0 +1,39 @@
+# LUCID runtime dependencies.
+#
+# The always-on core is small on purpose. Transcription backends are optional
+# and lazy-imported — install only the one(s) you actually use (see the bottom
+# of this file). Pins are conservative lower bounds (>=) so security/bugfix
+# releases flow in while still guaranteeing the APIs LUCID relies on.
+
+# --- Core server (required) ---
+fastapi>=0.115
+uvicorn[standard]>=0.34        # ASGI server (standard = websockets, httptools, etc.)
+python-multipart>=0.0.20       # required for FastAPI file uploads
+pydantic>=2.10
+pydantic-settings>=2.7
+httpx>=0.28                    # async HTTP client (Plaud, Cloudflare, downloads)
+aiosqlite>=0.20                # async SQLite access for the notes store
+python-dotenv>=1.0             # loads .env during local/dev runs
+watchfiles>=1.0                # USB / drop-folder watcher
+
+# --- AI / pipeline (required) ---
+anthropic>=0.42                # Claude analysis + assistant layer
+
+# --- Local transcription (DEFAULT backend) ---
+# Lucid transcribes locally out of the box (free, private, no per-minute API
+# cost), so this is installed by default. If everyone using your copy picks
+# cloud transcription (OpenAI/Deepgram) in setup, you can comment this out to
+# slim the first-run install.
+faster-whisper>=1.1
+#
+# GPU acceleration is OPTIONAL. For NVIDIA CUDA, additionally install the
+# matching CUDA wheels, e.g.:
+#   pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+# Leave these out for CPU-only transcription.
+
+# --- Cloud transcription (OPTIONAL: only if you pick a hosted backend) ---
+# OpenAI Whisper API  (transcribe_backend = "openai"):
+#   pip install "openai>=1.59,<2"
+#
+# Deepgram batch/streaming  (transcribe_backend = "deepgram"):
+#   pip install "deepgram-sdk>=3.8"

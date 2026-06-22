@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#faf9f5" />
+<title>Set up Lucid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --serif:"Instrument Serif",Georgia,serif;
+    --sans:"Hanken Grotesk",system-ui,-apple-system,sans-serif;
+    --paper:oklch(0.984 0.006 83);--card:oklch(1 0 0);--sink:oklch(0.965 0.008 83);
+    --ink:oklch(0.24 0.012 60);--ink-soft:oklch(0.46 0.012 60);--muted:oklch(0.62 0.012 60);
+    --line:oklch(0.912 0.006 83);--accent:oklch(0.60 0.135 42);--accent-ink:oklch(0.47 0.13 42);
+    --accent-soft:oklch(0.945 0.035 50);--pos:oklch(0.62 0.12 155);--ten:oklch(0.58 0.16 28);
+    --sh:0 1px 2px oklch(0.4 0.02 60/0.05),0 10px 30px oklch(0.4 0.02 60/0.08);
+    --sh-lg:0 2px 6px oklch(0.4 0.02 60/0.06),0 24px 60px oklch(0.4 0.02 60/0.13);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --paper:oklch(0.185 0.008 60);--card:oklch(0.225 0.009 60);--sink:oklch(0.21 0.009 60);
+    --ink:oklch(0.95 0.006 83);--ink-soft:oklch(0.75 0.01 70);--muted:oklch(0.62 0.012 70);
+    --line:oklch(0.30 0.009 60);--accent:oklch(0.74 0.13 50);--accent-ink:oklch(0.82 0.11 58);
+    --accent-soft:oklch(0.32 0.05 50);--sh:0 1px 2px oklch(0 0 0/0.25),0 12px 34px oklch(0 0 0/0.4);
+    --sh-lg:0 2px 6px oklch(0 0 0/0.3),0 30px 70px oklch(0 0 0/0.5);
+  }}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{font-family:var(--sans);background:radial-gradient(120% 75% at 50% -8%,var(--accent-soft) 0%,transparent 46%),var(--paper);
+    color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;
+    padding:48px 20px;line-height:1.5;letter-spacing:-0.011em;-webkit-font-smoothing:antialiased;}
+  button{font-family:inherit;cursor:pointer;color:inherit;border:none;background:none;}
+  ::selection{background:var(--accent-soft);}
+  a{color:var(--accent-ink);font-weight:600;text-decoration:none;}
+  .wrap{width:100%;max-width:500px;display:flex;flex-direction:column;gap:22px;}
+  .brand{display:flex;align-items:center;gap:11px;justify-content:center;}
+  .mark{width:34px;height:34px;border-radius:10px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-family:var(--serif);font-size:22px;line-height:1;}
+  .wordmark{font-family:var(--serif);font-size:28px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:26px;box-shadow:var(--sh-lg);overflow:hidden;}
+  .head{padding:30px 32px 6px;}
+  .steps{display:flex;gap:7px;margin-bottom:22px;}
+  .steps i{height:4px;flex:1;border-radius:99px;background:var(--line);transition:.4s;}
+  .steps i.done{background:var(--accent);}
+  .steps i.now{background:var(--accent);opacity:.45;}
+  .kick{font-size:12px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:var(--accent-ink);}
+  h1{font-family:var(--serif);font-size:32px;font-weight:400;line-height:1.08;margin:9px 0 7px;}
+  .sub{color:var(--ink-soft);font-size:15px;max-width:42ch;}
+  .body{padding:10px 32px 30px;display:flex;flex-direction:column;gap:14px;}
+  .choice{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .opt{text-align:left;border:1.5px solid var(--line);background:var(--card);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:5px;transition:.16s;}
+  .opt:hover{border-color:var(--ink-soft);}
+  .opt.sel{border-color:var(--accent);background:color-mix(in oklch,var(--accent-soft) 55%,var(--card));}
+  .opt .ic{font-size:18px;}
+  .opt b{font-size:15px;font-weight:650;}
+  .opt span{font-size:12.5px;color:var(--muted);line-height:1.4;}
+  .opt .tag{margin-top:2px;font-size:11px;font-weight:700;color:var(--accent-ink);}
+  .field{display:flex;flex-direction:column;gap:7px;}
+  .field label{font-size:13px;font-weight:600;color:var(--ink-soft);}
+  .input{border:1.5px solid var(--line);background:var(--sink);border-radius:13px;padding:13px 15px;font-family:inherit;font-size:15px;color:var(--ink);width:100%;transition:.16s;}
+  .input:focus{outline:none;border-color:var(--accent);background:var(--card);}
+  select.input{cursor:pointer;}
+  .hint{font-size:12.5px;color:var(--muted);line-height:1.45;}
+  .row2{display:grid;grid-template-columns:1fr 110px;gap:10px;}
+  .err{font-size:13.5px;color:var(--ten);min-height:18px;font-weight:550;}
+  .ok{font-size:13.5px;color:var(--pos);font-weight:600;display:flex;align-items:center;gap:7px;}
+  .foot{display:flex;align-items:center;gap:12px;margin-top:6px;}
+  .grow{flex:1;}
+  .btn{background:var(--ink);color:var(--paper);font-weight:650;font-size:15px;padding:13px 22px;border-radius:13px;display:inline-flex;align-items:center;gap:9px;transition:.16s;box-shadow:var(--sh);}
+  .btn:hover{transform:translateY(-1px);}
+  .btn:disabled{opacity:.5;pointer-events:none;}
+  .btn.accent{background:var(--accent);}
+  .btn.ghost{background:transparent;color:var(--ink-soft);box-shadow:none;padding-left:4px;}
+  .btn.full{width:100%;justify-content:center;}
+  .welcome{display:flex;flex-direction:column;gap:13px;}
+  .feat{display:flex;gap:12px;align-items:flex-start;}
+  .feat .fi{width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-size:15px;flex:none;}
+  .feat b{font-size:14.5px;font-weight:650;}
+  .feat p{font-size:13px;color:var(--muted);line-height:1.4;}
+  .center{text-align:center;display:flex;flex-direction:column;gap:16px;align-items:center;}
+  .qr{width:120px;height:120px;border-radius:16px;border:1px solid var(--line);background:repeating-conic-gradient(var(--ink) 0% 25%,var(--card) 0% 50%) 0/15px 15px;opacity:.9;}
+  .badge{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--pos);background:color-mix(in oklch,var(--pos) 13%,var(--card));padding:6px 14px;border-radius:99px;}
+  .pdot{width:8px;height:8px;border-radius:99px;background:currentColor;}
+  .spin{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;display:inline-block;}
+  @keyframes sp{to{transform:rotate(360deg);}}
+  .linkrow{display:flex;align-items:center;gap:9px;width:100%;background:var(--sink);border:1px solid var(--line);border-radius:13px;padding:11px 14px;}
+  .linkrow code{font-family:var(--sans);font-size:13.5px;color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+  .copy{color:var(--accent-ink);font-weight:600;font-size:13px;white-space:nowrap;}
+  .skip{font-size:13px;color:var(--muted);text-align:center;}
+  .skip a{color:var(--muted);text-decoration:underline;cursor:pointer;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand"><span class="mark">L</span><span class="wordmark">Lucid</span></div>
+    <div class="card"><div id="wiz"></div></div>
+    <div class="skip" id="footnote"></div>
+  </div>
+<script>
+const TOTAL = 5;
+let step = 0;
+const state = { transMode:"local", transModel:"small", cloudProvider:"openai", plaud:null };
+// Read the token live each call — it only exists after the password step, and
+// the deploy step's authenticated /api/tunnel poll runs after that.
+function authToken(){ return localStorage.getItem("lucid_token") || ""; }
+
+async function api(path, body, method="POST"){
+  const headers = {"Content-Type":"application/json"};
+  const t = authToken(); if (t) headers["Authorization"] = "Bearer " + t;
+  const r = await fetch(path, {method, headers, body: body?JSON.stringify(body):undefined});
+  let data = {}; try { data = await r.json(); } catch(e){}
+  if (!r.ok) throw new Error(data.detail || ("Something went wrong (HTTP " + r.status + ")"));
+  return data;
+}
+const el = (id)=>document.getElementById(id);
+const wiz = el("wiz");
+function progress(now){ return `<div class="steps">${Array.from({length:TOTAL},(_,i)=>
+  `<i class="${i<now?"done":i===now?"now":""}"></i>`).join("")}</div>`; }
+
+function render(){
+  el("footnote").textContent = "";
+  if (step===0) return welcome();
+  if (step===1) return anthropicStep();
+  if (step===2) return transStep();
+  if (step===3) return plaudStep();
+  if (step===4) return passwordStep();
+  if (step===5) return deployStep();
+}
+
+function welcome(){
+  wiz.innerHTML = `<div class="head"><div class="kick">Welcome</div>
+    <h1>Let’s set up Lucid</h1>
+    <div class="sub">In about two minutes you’ll have your own private AI notetaker. Just record on your Plaud — clean, sorted notes appear here automatically.</div></div>
+    <div class="body welcome">
+      <div class="feat"><span class="fi">◷</span><div><b>Auto-sync your Plaud</b><p>New recordings are pulled in and turned into notes on their own.</p></div></div>
+      <div class="feat"><span class="fi">◧</span><div><b>Sorted & searchable</b><p>Summaries, people, ideas, and action items — organized for you.</p></div></div>
+      <div class="feat"><span class="fi">🔒</span><div><b>Private to you</b><p>Everything runs on your computer behind your own password.</p></div></div>
+      <div class="foot"><span class="grow"></span><button class="btn accent" id="go">Get started →</button></div>
+    </div>`;
+  el("go").onclick = ()=>{ step=1; render(); };
+}
+
+function anthropicStep(){
+  wiz.innerHTML = `<div class="head">${progress(0)}<div class="kick">Step 1 of ${TOTAL} · AI key</div>
+    <h1>Connect Claude</h1>
+    <div class="sub">Lucid uses Claude (by Anthropic) to understand your recordings. Paste your API key — it’s stored only on your computer.</div></div>
+    <div class="body">
+      <div class="field"><label>Anthropic API key</label>
+        <input class="input" id="key" type="password" placeholder="sk-ant-..." autocomplete="off" />
+        <div class="hint">Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> → API Keys. Usage is billed by Anthropic.</div></div>
+      <div class="err" id="err"></div>
+      <div class="foot"><button class="btn ghost" id="back">← Back</button><span class="grow"></span>
+        <button class="btn accent" id="next">Verify & continue</button></div>
+    </div>`;
+  el("back").onclick=()=>{ step=0; render(); };
+  el("key").focus();
+  el("next").onclick=async()=>{
+    const key=el("key").value.trim(); const err=el("err"); const btn=el("next");
+    if(!key){ err.textContent="Paste your Anthropic key to continue."; return; }
+    btn.disabled=true; btn.innerHTML='<span class="spin"></span> Verifying…'; err.textContent="";
+    try{ await api("/api/setup/anthropic",{key}); step=2; render(); }
+    catch(e){ err.textContent=e.message; btn.disabled=false; btn.textContent="Verify & continue"; }
+  };
+  el("key").onkeydown=e=>{ if(e.key==="Enter") el("next").click(); };
+}
+
+function transStep(){
+  const local = state.transMode==="local";
+  wiz.innerHTML = `<div class="head">${progress(1)}<div class="kick">Step 2 of ${TOTAL} · Transcription</div>
+    <h1>Turn audio into text</h1>
+    <div class="sub">How should Lucid transcribe your recordings? You can change this later.</div></div>
+    <div class="body">
+      <div class="choice">
+        <button class="opt ${local?"sel":""}" data-m="local"><span class="ic">◰</span><b>On your computer</b><span>Free & fully private. Runs locally.</span><span class="tag">Recommended</span></button>
+        <button class="opt ${local?"":"sel"}" data-m="cloud"><span class="ic">⚡</span><b>In the cloud</b><span>Fastest & most accurate. Needs a key.</span><span class="tag">Optional</span></button>
+      </div>
+      <div id="sub"></div>
+      <div class="err" id="err"></div>
+      <div class="foot"><button class="btn ghost" id="back">← Back</button><span class="grow"></span>
+        <button class="btn accent" id="next">Continue →</button></div>
+    </div>`;
+  const sub=el("sub");
+  function paintSub(){
+    if(state.transMode==="local"){
+      sub.innerHTML=`<div class="field"><label>Model quality</label>
+        <select class="input" id="model">
+          <option value="tiny">Fastest — tiny</option>
+          <option value="base">Fast — base</option>
+          <option value="small">Balanced — small</option>
+          <option value="medium">Accurate — medium</option>
+          <option value="large-v3">Best — large (needs a strong computer)</option>
+        </select><div class="hint">Bigger models are more accurate but slower. “Small” runs well on most laptops.</div></div>`;
+      el("model").value=state.transModel;
+      el("model").onchange=()=>{ state.transModel=el("model").value; };
+    } else {
+      sub.innerHTML=`<div class="field"><label>Provider</label>
+        <div class="row2"><select class="input" id="prov"><option value="openai">OpenAI</option><option value="deepgram">Deepgram</option></select></div></div>
+        <div class="field"><label>API key</label><input class="input" id="ckey" type="password" placeholder="Paste your key" autocomplete="off" /></div>`;
+      el("prov").value=state.cloudProvider;
+      el("prov").onchange=()=>{ state.cloudProvider=el("prov").value; };
+    }
+  }
+  paintSub();
+  wiz.querySelectorAll(".opt").forEach(o=>o.onclick=()=>{ state.transMode=o.dataset.m; transStep(); });
+  el("back").onclick=()=>{ step=1; render(); };
+  el("next").onclick=async()=>{
+    const err=el("err"); const btn=el("next"); err.textContent="";
+    let payload;
+    if(state.transMode==="local"){ payload={mode:"local", model:state.transModel}; }
+    else { const k=el("ckey").value.trim(); if(!k){ err.textContent="Enter your "+state.cloudProvider+" key, or pick local transcription."; return; }
+      payload={mode:state.cloudProvider}; payload[state.cloudProvider+"_key"]=k; }
+    btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…';
+    try{ await api("/api/setup/transcription",payload); step=3; render(); }
+    catch(e){ err.textContent=e.message; btn.disabled=false; btn.textContent="Continue →"; }
+  };
+}
+
+function plaudStep(){
+  const connected = state.plaud;
+  wiz.innerHTML = `<div class="head">${progress(2)}<div class="kick">Step 3 of ${TOTAL} · Your Plaud</div>
+    <h1>Connect your Plaud</h1>
+    <div class="sub">Sign in with your Plaud account. Lucid checks your Plaud cloud and pulls in new recordings automatically. Make sure <b>Private Cloud Sync</b> is on in the Plaud app.</div></div>
+    <div class="body">
+      ${connected?`<div class="ok"><span>✓</span> Connected as ${connected.email}${connected.recordings!=null?` · ${connected.recordings} recordings`:""}</div>`:""}
+      <div class="field"><label>Plaud email</label><input class="input" id="pemail" type="email" placeholder="you@email.com" autocomplete="username" /></div>
+      <div class="field"><label>Plaud password</label>
+        <div class="row2"><input class="input" id="ppw" type="password" placeholder="Password" autocomplete="off" />
+          <select class="input" id="preg"><option value="us">US</option><option value="eu">EU</option></select></div>
+        <div class="hint">Your password is used once to sign in, then only a secure token is kept on your computer.</div></div>
+      <div class="err" id="err"></div>
+      <div class="foot"><button class="btn ghost" id="back">← Back</button><span class="grow"></span>
+        <button class="btn accent" id="next">${connected?"Continue →":"Connect"}</button></div>
+      <div class="skip"><a id="skip">Skip for now — I’ll add recordings myself</a></div>
+    </div>`;
+  el("back").onclick=()=>{ step=2; render(); };
+  el("skip").onclick=()=>{ step=4; render(); };
+  el("next").onclick=async()=>{
+    if(state.plaud){ step=4; render(); return; }
+    const email=el("pemail").value.trim(), password=el("ppw").value, region=el("preg").value;
+    const err=el("err"); const btn=el("next");
+    if(!email||!password){ err.textContent="Enter your Plaud email and password."; return; }
+    btn.disabled=true; btn.innerHTML='<span class="spin"></span> Connecting…'; err.textContent="";
+    try{ const info=await api("/api/setup/plaud",{email,password,region}); state.plaud=info; plaudStep(); }
+    catch(e){ err.textContent=e.message; btn.disabled=false; btn.textContent="Connect"; }
+  };
+}
+
+function passwordStep(){
+  wiz.innerHTML = `<div class="head">${progress(3)}<div class="kick">Step 4 of ${TOTAL} · Password</div>
+    <h1>Protect your notes</h1>
+    <div class="sub">Set a password for Lucid. You’ll enter it to open your notes — and it keeps your private link safe from anyone else.</div></div>
+    <div class="body">
+      <div class="field"><label>Choose a password</label><input class="input" id="pw1" type="password" placeholder="At least 8 characters" autocomplete="new-password" /></div>
+      <div class="field"><label>Confirm password</label><input class="input" id="pw2" type="password" placeholder="Repeat it" autocomplete="new-password" /></div>
+      <div class="err" id="err"></div>
+      <div class="foot"><button class="btn ghost" id="back">← Back</button><span class="grow"></span>
+        <button class="btn accent" id="next">Continue →</button></div>
+    </div>`;
+  el("back").onclick=()=>{ step=3; render(); };
+  el("next").onclick=async()=>{
+    const a=el("pw1").value, b=el("pw2").value; const err=el("err"); const btn=el("next");
+    if(a.length<8){ err.textContent="Use at least 8 characters."; return; }
+    if(a!==b){ err.textContent="Those passwords don’t match."; return; }
+    btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…'; err.textContent="";
+    try{ const d=await api("/api/setup/password",{password:a});
+      if(d.token) localStorage.setItem("lucid_token", d.token);
+      step=5; render();
+    }catch(e){ err.textContent=e.message; btn.disabled=false; btn.textContent="Continue →"; }
+  };
+  el("pw2").onkeydown=e=>{ if(e.key==="Enter") el("next").click(); };
+}
+
+async function deployStep(){
+  wiz.innerHTML = `<div class="head">${progress(5)}<div class="kick">Almost done</div>
+    <h1>Deploying your private link</h1>
+    <div class="sub">Lucid is finishing setup and putting your notes online behind your password. This takes a few seconds.</div></div>
+    <div class="body center">
+      <span class="badge" style="color:var(--muted)"><span class="spin"></span> Setting up…</span>
+      <div class="hint" id="dstat">Starting your secure Cloudflare link…</div>
+    </div>`;
+  try{ await api("/api/setup/finish",{}); }
+  catch(e){ el("dstat").innerHTML='<span style="color:var(--ten)">'+e.message+'</span>'; return; }
+  // poll for the tunnel URL
+  let url="";
+  for(let i=0;i<24 && !url;i++){
+    try{ const t=await api("/api/tunnel",null,"GET"); url=(t&&t.url)||""; }catch(e){}
+    if(!url){ await new Promise(r=>setTimeout(r,1500)); }
+  }
+  live(url);
+}
+
+function live(url){
+  const linkBlock = url
+    ? `<div class="linkrow"><span>🔗</span><code id="url">${url}</code><span class="copy" id="copy">Copy</span></div>`
+    : `<div class="hint">Your public link is still starting — you can find it any time in Settings once you’re in.</div>`;
+  wiz.innerHTML = `<div class="head">${progress(5)}<div class="kick" style="color:var(--pos)">You’re live</div>
+    <h1>Lucid is ready</h1>
+    <div class="sub">Open this on your phone to check your notes anywhere — it’s protected by your password. Just record on your Plaud and notes appear automatically.</div></div>
+    <div class="body center">
+      <div class="qr"></div>
+      ${linkBlock}
+      <button class="btn accent full" id="open">Open my notes →</button>
+    </div>`;
+  const c=el("copy"); if(c) c.onclick=async()=>{ try{ await navigator.clipboard.writeText(url); c.textContent="Copied"; setTimeout(()=>c.textContent="Copy",1500);}catch(e){} };
+  el("open").onclick=()=>{ location.href="/"; };
+}
+
+render();
+</script>
+</body>
+</html>
