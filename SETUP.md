@@ -57,8 +57,9 @@ python start.py
 ```
 
 - **The first time**, Lucid sets up a private, self-contained workspace and
-  installs everything it needs. This takes about **1-2 minutes** and only
-  happens once.
+  installs everything it needs. It downloads a few hundred MB, so give it **a
+  few minutes** — this only happens once. (Choosing **cloud** transcription in
+  the wizard keeps the install lighter and skips the local model download.)
 - After that, it starts up quickly and **opens your web browser** to the setup
   wizard.
 

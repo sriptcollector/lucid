@@ -107,8 +107,8 @@ def ensure_venv() -> Path:
     if py.exists():
         return py
 
-    say("Setting up (first run, ~1-2 min)...")
-    say(f"Creating a private environment at {VENV_DIR.name}/ ...")
+    say("First-time setup — creating a private environment...")
+    say(f"(at {VENV_DIR.name}/)")
     try:
         # with_pip=True ensures pip is available inside the venv. clear=False so
         # we never blow away an in-progress environment.
@@ -172,7 +172,8 @@ def ensure_dependencies(py: Path) -> None:
             "  The download may be incomplete — re-unzip the release and retry."
         )
 
-    say("Setting up (first run, ~1-2 min)...")
+    say("Installing dependencies — first run downloads a few hundred MB, so")
+    say("give it a few minutes (one-time). Later launches are instant.")
     say("Upgrading pip...")
     _run_streaming(
         [str(py), "-m", "pip", "install", "--upgrade", "--quiet", "pip"],

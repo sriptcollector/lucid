@@ -43,7 +43,10 @@ transcription service if you pick the cloud option).
    ```
 
    The first time, this builds a private workspace and installs everything it
-   needs. That takes about 1-2 minutes. After that, startup is quick.
+   needs. The first run downloads a few hundred MB, so give it a few minutes —
+   it only happens once, and after that startup is instant. (Your very first
+   recording also downloads a transcription model once, unless you choose cloud
+   transcription in the wizard.)
 
 4. **Follow the setup wizard.** Your browser opens to a clean setup page. You
    will enter a few things (details below), and Lucid takes care of the rest.
