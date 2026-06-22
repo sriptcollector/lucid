@@ -170,6 +170,56 @@ def disconnect_plaud() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Telegram (optional phone delivery of the link + new notes)
+# --------------------------------------------------------------------------- #
+def connect_telegram(token: str) -> dict:
+    """Validate a Telegram bot token, enable delivery, and start the bot.
+
+    Returns {'bot_username', 'bot_name'}; raises ValueError on a bad token.
+    """
+    from .ingest import telegram_bot
+
+    token = (token or "").strip()
+    if not token or ":" not in token:
+        raise ValueError("Paste the token from @BotFather (it looks like 123456:ABC-...).")
+    me = telegram_bot.get_me(token)
+    if not me:
+        raise ValueError("Telegram didn't accept that token. Copy it again from @BotFather.")
+    settings.save_config({"telegram_enabled": True, "telegram_bot_token": token})
+    telegram_bot.start()
+    return {"bot_username": me["username"], "bot_name": me.get("first_name", "")}
+
+
+def telegram_status() -> dict:
+    from .ingest import telegram_bot
+    from .notify import telegram as tg
+
+    connected = bool(settings.telegram_enabled and settings.telegram_bot_token)
+    me = telegram_bot.get_me() if connected else None
+    return {
+        "connected": connected,
+        "bot_username": (me or {}).get("username", ""),
+        "chat_known": bool(tg.default_chat()),
+    }
+
+
+def disconnect_telegram() -> None:
+    settings.save_config({"telegram_enabled": False})
+
+
+def send_phone_link() -> bool:
+    """Push the current live link to the known Telegram chat. False if no chat."""
+    from .ingest import telegram_bot
+    from .notify import telegram as tg
+
+    chat = tg.default_chat()
+    if not chat:
+        return False
+    telegram_bot.send_link(chat)
+    return True
+
+
+# --------------------------------------------------------------------------- #
 # Wizard state
 # --------------------------------------------------------------------------- #
 def setup_state() -> dict[str, Any]:

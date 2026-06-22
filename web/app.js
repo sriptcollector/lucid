@@ -1045,7 +1045,8 @@ const App = (() => {
         <div class="kv"><span class="k">Translate to</span><span class="v">${h(st.translate_to||"off")}</span></div>
         <div class="kv"><span class="k">Plaud account</span><span class="v ${st.plaud_connected?"ok":"bad"}">${st.plaud_connected?h(st.plaud_email||"connected"):"not connected"}</span></div>
         <div class="kv"><span class="k">Sync interval</span><span class="v">${st.plaud_poll_interval||300}s</span></div>
-        <div class="btnrow" style="margin-top:14px"><a class="btn ghost" href="/setup">Re-run setup</a></div>
+        <div class="kv"><span class="k">Telegram</span><span class="v ${st.telegram_connected?"ok":""}">${st.telegram_connected?(st.telegram_chat_known?"connected":"connected · message your bot"):"off"}</span></div>
+        <div class="btnrow" style="margin-top:14px"><a class="btn ghost" href="/setup">Re-run setup</a>${st.telegram_connected&&st.telegram_chat_known?`<button class="btn ghost" id="tgSend">📲 Send link to my phone</button>`:""}</div>
       </div>
       <div class="panel"><h2>Appearance</h2>
         <div class="field"><label>Theme</label><select id="themeSel">
@@ -1058,6 +1059,8 @@ const App = (() => {
     const cl=document.getElementById("copyLink"); if(cl) cl.onclick=async()=>{ try{ await navigator.clipboard.writeText(url); toast("Link copied"); }catch(e){ toast("Copy failed"); } };
     const rt=document.getElementById("restartTun"); if(rt) rt.onclick=async()=>{ rt.disabled=true; rt.textContent="Restarting…";
       try{ await api("/api/tunnel/restart",{method:"POST"}); toast("Restarting link…"); setTimeout(showSettings,3500);}catch(e){ toast("Failed"); rt.disabled=false; rt.textContent="Restart public link"; } };
+    const ts=document.getElementById("tgSend"); if(ts) ts.onclick=async()=>{ ts.disabled=true;
+      try{ const r=await api("/api/setup/telegram/test",{method:"POST"}); toast(r.sent?"Sent to your phone":"Message your bot first"); }catch(e){ toast("Failed"); } ts.disabled=false; };
   }
 
   async function reanalyze(id){ try{ await api(`/api/recordings/${id}/reanalyze`,{method:"POST"}); toast("Re-analyzing…"); showDetail(id);}catch(e){toast("Failed");} }

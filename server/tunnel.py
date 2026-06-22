@@ -184,11 +184,13 @@ class _TunnelManager:
         if not settings.telegram_enabled:
             return
         try:
-            from .notify import telegram  # type: ignore
+            from .notify import telegram
+            from .ingest import telegram_bot
 
             chat = telegram.default_chat()
             if chat:
-                telegram.send_message(chat, f"Lucid is live: {url}")
+                # Nice, token-aware link card (live URL + People/Directory links).
+                telegram_bot.send_link(chat)
         except Exception:  # noqa: BLE001 - notifications must never break the tunnel
             pass
 

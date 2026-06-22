@@ -276,6 +276,35 @@ def setup_plaud_disconnect() -> dict:
     return {"ok": True}
 
 
+@app.post("/api/setup/telegram", dependencies=[Depends(setup_or_auth)])
+async def setup_telegram(request: Request) -> dict:
+    token = (await request.json()).get("token", "")
+    try:
+        info = await asyncio.to_thread(setup_service.connect_telegram, token)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, str(exc) or "Could not connect Telegram.")
+    return {"ok": True, **info}
+
+
+@app.get("/api/setup/telegram/status", dependencies=[Depends(setup_or_auth)])
+async def setup_telegram_status() -> dict:
+    return await asyncio.to_thread(setup_service.telegram_status)
+
+
+@app.post("/api/setup/telegram/test", dependencies=[Depends(setup_or_auth)])
+async def setup_telegram_test() -> dict:
+    sent = await asyncio.to_thread(setup_service.send_phone_link)
+    return {"ok": True, "sent": sent}
+
+
+@app.delete("/api/setup/telegram", dependencies=[Depends(auth)])
+def setup_telegram_disconnect() -> dict:
+    setup_service.disconnect_telegram()
+    return {"ok": True}
+
+
 @app.post("/api/setup/password", dependencies=[Depends(setup_or_auth)])
 async def setup_password(request: Request) -> dict:
     pw = (await request.json()).get("password", "")
@@ -347,7 +376,17 @@ def get_settings() -> dict:
         "plaud_poll_interval": settings.plaud_poll_interval,
         "tunnel_enabled": settings.tunnel_enabled,
         "public_url": settings.current_public_url(),
+        "telegram_connected": bool(settings.telegram_enabled and settings.telegram_bot_token),
+        "telegram_chat_known": _telegram_chat_known(),
     }
+
+
+def _telegram_chat_known() -> bool:
+    try:
+        from .notify import telegram as tg
+        return bool(tg.default_chat())
+    except Exception:  # noqa: BLE001
+        return False
 
 
 @app.post("/api/settings", dependencies=[Depends(auth)])

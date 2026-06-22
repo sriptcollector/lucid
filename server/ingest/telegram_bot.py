@@ -49,6 +49,30 @@ def _base() -> str:
     return f"{_API}/bot{settings.telegram_bot_token}"
 
 
+def get_me(token: str | None = None) -> dict | None:
+    """Validate a bot token via getMe. Returns {'username','first_name'} or None.
+
+    Accepts an explicit token so onboarding can verify before saving anything.
+    """
+    tok = token or settings.telegram_bot_token
+    if not tok:
+        return None
+    try:
+        r = httpx.get(f"{_API}/bot{tok}/getMe", timeout=15)
+        r.raise_for_status()
+        res = r.json().get("result") or {}
+        if not res.get("username"):
+            return None
+        return {"username": res.get("username", ""), "first_name": res.get("first_name", "")}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def send_link(chat_id: str) -> None:
+    """Public wrapper so other modules (e.g. the tunnel) can push the live link."""
+    _send_link(chat_id)
+
+
 def _get_updates(offset: int | None) -> list[dict]:
     params = {"timeout": 30}
     if offset is not None:
@@ -214,9 +238,17 @@ def _run() -> None:
                     pass
 
 
+_thread: threading.Thread | None = None
+
+
 def start() -> threading.Thread | None:
+    """Start the long-poll loop (idempotent — safe to call from startup AND from
+    the /api/setup/telegram route once a bot is connected)."""
+    global _thread
     if not (settings.telegram_enabled and settings.telegram_bot_token):
         return None
-    t = threading.Thread(target=_run, name="lucid-telegram", daemon=True)
-    t.start()
-    return t
+    if _thread is not None and _thread.is_alive():
+        return _thread
+    _thread = threading.Thread(target=_run, name="lucid-telegram", daemon=True)
+    _thread.start()
+    return _thread

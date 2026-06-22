@@ -86,6 +86,9 @@
   .linkrow{display:flex;align-items:center;gap:9px;width:100%;background:var(--sink);border:1px solid var(--line);border-radius:13px;padding:11px 14px;}
   .linkrow code{font-family:var(--sans);font-size:13.5px;color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
   .copy{color:var(--accent-ink);font-weight:600;font-size:13px;white-space:nowrap;}
+  .tg-steps{margin:0 0 2px 18px;display:flex;flex-direction:column;gap:8px;font-size:13.5px;color:var(--ink-soft);line-height:1.45;}
+  .tg-steps li{padding-left:2px;}
+  .tg-steps code{background:var(--sink);border-radius:6px;padding:1px 6px;font-size:12.5px;}
   .skip{font-size:13px;color:var(--muted);text-align:center;}
   .skip a{color:var(--muted);text-decoration:underline;cursor:pointer;}
 </style>
@@ -97,9 +100,9 @@
     <div class="skip" id="footnote"></div>
   </div>
 <script>
-const TOTAL = 5;
+const TOTAL = 6;
 let step = 0;
-const state = { transMode:"local", transModel:"small", cloudProvider:"openai", plaud:null };
+const state = { transMode:"local", transModel:"small", cloudProvider:"openai", plaud:null, telegram:null };
 // Read the token live each call — it only exists after the password step, and
 // the deploy step's authenticated /api/tunnel poll runs after that.
 function authToken(){ return localStorage.getItem("lucid_token") || ""; }
@@ -123,8 +126,9 @@ function render(){
   if (step===1) return anthropicStep();
   if (step===2) return transStep();
   if (step===3) return plaudStep();
-  if (step===4) return passwordStep();
-  if (step===5) return deployStep();
+  if (step===4) return telegramStep();
+  if (step===5) return passwordStep();
+  if (step===6) return deployStep();
 }
 
 function welcome(){
@@ -245,8 +249,70 @@ function plaudStep(){
   };
 }
 
+function telegramStep(){
+  const connected = state.telegram;
+  wiz.innerHTML = `<div class="head">${progress(3)}<div class="kick">Step 4 of ${TOTAL} · Phone (optional)</div>
+    <h1>Get notes on your phone</h1>
+    <div class="sub">Connect a free Telegram bot and Lucid will text you your private link and each new note as it’s ready. You can skip this and add it later in Settings.</div></div>
+    <div class="body">
+      <ol class="tg-steps">
+        <li>In Telegram, open <b>@BotFather</b> and send <b>/newbot</b> — follow the prompts to name it.</li>
+        <li>It replies with a <b>token</b> like <code>123456:ABC-…</code>. Paste it below.</li>
+      </ol>
+      <div class="field"><label>Bot token</label><input class="input" id="tgtok" placeholder="123456:ABC-…" autocomplete="off" /></div>
+      ${connected?`<div class="ok"><span>✓</span> Connected to @${connected.bot_username}${connected.chat_known?" · phone linked":""}</div>`:""}
+      <div class="err" id="err"></div>
+      <div class="foot"><button class="btn ghost" id="back">← Back</button><span class="grow"></span>
+        <button class="btn accent" id="next">${connected?"Continue →":"Connect"}</button></div>
+      <div class="skip"><a id="skip">Skip — I don’t need phone delivery</a></div>
+    </div>`;
+  el("back").onclick=()=>{ step=3; render(); };
+  el("skip").onclick=()=>{ step=5; render(); };
+  el("next").onclick=async()=>{
+    if(state.telegram){ step=5; render(); return; }
+    const tok=el("tgtok").value.trim(); const err=el("err"); const btn=el("next");
+    if(!tok){ err.textContent="Paste your bot token, or skip this step."; return; }
+    btn.disabled=true; btn.innerHTML='<span class="spin"></span> Connecting…'; err.textContent="";
+    try{ const info=await api("/api/setup/telegram",{token:tok});
+      state.telegram={bot_username:info.bot_username, chat_known:false};
+      telegramLinkPhase(info.bot_username);
+    }catch(e){ err.textContent=e.message; btn.disabled=false; btn.textContent="Connect"; }
+  };
+}
+
+let _tgStop=false;
+function telegramLinkPhase(username){
+  _tgStop=false;
+  wiz.innerHTML = `<div class="head">${progress(3)}<div class="kick">Step 4 of ${TOTAL} · Phone</div>
+    <h1>Say hi to your bot</h1>
+    <div class="sub">Almost there — message your new bot once so it knows where to send your notes.</div></div>
+    <div class="body">
+      <ol class="tg-steps">
+        <li>Open Telegram and find <b>@${username}</b>.</li>
+        <li>Tap <b>Start</b> (or send it any message).</li>
+      </ol>
+      <a class="btn full" id="openbot" href="https://t.me/${username}" target="_blank" rel="noopener" style="text-decoration:none">Open @${username} in Telegram</a>
+      <div class="ok" id="tgwait" style="margin-top:2px"><span class="spin"></span> Waiting for your message…</div>
+      <div class="foot"><button class="btn ghost" id="back">← Back</button><span class="grow"></span>
+        <button class="btn ghost" id="skip2">Skip waiting →</button></div>
+    </div>`;
+  el("back").onclick=()=>{ _tgStop=true; state.telegram=null; step=4; render(); };
+  el("skip2").onclick=()=>{ _tgStop=true; step=5; render(); };
+  (async()=>{
+    for(let i=0;i<40 && !_tgStop;i++){
+      try{ const s=await api("/api/setup/telegram/status",null,"GET");
+        if(s.chat_known){ if(_tgStop) return;
+          state.telegram={bot_username:s.bot_username||username, chat_known:true};
+          const w=el("tgwait"); if(w) w.innerHTML='<span>✓</span> Phone linked — your notes will arrive here.';
+          setTimeout(()=>{ if(!_tgStop){ step=5; render(); } }, 1500); return; }
+      }catch(e){}
+      await new Promise(r=>setTimeout(r,1500));
+    }
+  })();
+}
+
 function passwordStep(){
-  wiz.innerHTML = `<div class="head">${progress(3)}<div class="kick">Step 4 of ${TOTAL} · Password</div>
+  wiz.innerHTML = `<div class="head">${progress(4)}<div class="kick">Step 5 of ${TOTAL} · Password</div>
     <h1>Protect your notes</h1>
     <div class="sub">Set a password for Lucid. You’ll enter it to open your notes — and it keeps your private link safe from anyone else.</div></div>
     <div class="body">
@@ -256,7 +322,7 @@ function passwordStep(){
       <div class="foot"><button class="btn ghost" id="back">← Back</button><span class="grow"></span>
         <button class="btn accent" id="next">Continue →</button></div>
     </div>`;
-  el("back").onclick=()=>{ step=3; render(); };
+  el("back").onclick=()=>{ step=4; render(); };
   el("next").onclick=async()=>{
     const a=el("pw1").value, b=el("pw2").value; const err=el("err"); const btn=el("next");
     if(a.length<8){ err.textContent="Use at least 8 characters."; return; }
@@ -264,14 +330,14 @@ function passwordStep(){
     btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…'; err.textContent="";
     try{ const d=await api("/api/setup/password",{password:a});
       if(d.token) localStorage.setItem("lucid_token", d.token);
-      step=5; render();
+      step=6; render();
     }catch(e){ err.textContent=e.message; btn.disabled=false; btn.textContent="Continue →"; }
   };
   el("pw2").onkeydown=e=>{ if(e.key==="Enter") el("next").click(); };
 }
 
 async function deployStep(){
-  wiz.innerHTML = `<div class="head">${progress(5)}<div class="kick">Almost done</div>
+  wiz.innerHTML = `<div class="head">${progress(6)}<div class="kick">Almost done</div>
     <h1>Deploying your private link</h1>
     <div class="sub">Lucid is finishing setup and putting your notes online behind your password. This takes a few seconds.</div></div>
     <div class="body center">
@@ -293,12 +359,15 @@ function live(url){
   const linkBlock = url
     ? `<div class="linkrow"><span>🔗</span><code id="url">${url}</code><span class="copy" id="copy">Copy</span></div>`
     : `<div class="hint">Your public link is still starting — you can find it any time in Settings once you’re in.</div>`;
-  wiz.innerHTML = `<div class="head">${progress(5)}<div class="kick" style="color:var(--pos)">You’re live</div>
+  const tgNote = (state.telegram && state.telegram.chat_known)
+    ? `<div class="ok"><span>📲</span> Link also sent to your Telegram</div>` : "";
+  wiz.innerHTML = `<div class="head">${progress(6)}<div class="kick" style="color:var(--pos)">You’re live</div>
     <h1>Lucid is ready</h1>
     <div class="sub">Open this on your phone to check your notes anywhere — it’s protected by your password. Just record on your Plaud and notes appear automatically.</div></div>
     <div class="body center">
       <div class="qr"></div>
       ${linkBlock}
+      ${tgNote}
       <button class="btn accent full" id="open">Open my notes →</button>
     </div>`;
   const c=el("copy"); if(c) c.onclick=async()=>{ try{ await navigator.clipboard.writeText(url); c.textContent="Copied"; setTimeout(()=>c.textContent="Copy",1500);}catch(e){} };
