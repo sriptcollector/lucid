@@ -37,6 +37,20 @@ jobs:
       - name: Build Lucid.app
         run: python build_exe.py
 
+      - name: Smoke-test that the app actually boots on macOS
+        run: |
+          ./dist/Lucid.app/Contents/MacOS/Lucid &
+          APP=$!
+          OK=0
+          for i in $(seq 1 45); do
+            if curl -fsS "http://127.0.0.1:8000/api/health" >/dev/null 2>&1; then OK=1; break; fi
+            sleep 1
+          done
+          echo "setup state:"; curl -fsS "http://127.0.0.1:8000/api/setup/state" | head -c 400 || true; echo
+          kill "$APP" 2>/dev/null || true
+          if [ "$OK" != "1" ]; then echo "FAILED: Lucid.app did not become healthy"; exit 1; fi
+          echo "OK: Lucid.app booted and served the app on macOS ${{ matrix.arch }}"
+
       - name: Package the .app (ditto preserves the bundle + ad-hoc signature)
         run: |
           cd dist
