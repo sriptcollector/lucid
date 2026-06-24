@@ -154,7 +154,7 @@ const App = (() => {
     const topics=(r.topics||[]).slice(0,2).map(t=>`<span class="chip">${h(t)}</span>`).join("");
     const proc=["done","error"].includes(r.status)?"":`<span class="proc"><span class="spin"></span>${h(r.status)}…</span>`;
     return `<div class="rcard" data-id="${r.id}" style="--mc:${m.c}">
-      ${ringHTML(m.c,72)}
+      <div class="tile ${m.k}"></div>
       <div class="rbody"><h3>${h(title)}</h3>
         ${r.summary?`<div class="snip">${h(r.summary)}</div>`:""}
         <div class="rmeta">
