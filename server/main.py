@@ -33,7 +33,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import setup_service, storage, tunnel
+from . import backup, setup_service, storage, tunnel
 from .config import settings
 from .ingest import intake, plaud_cloud, telegram_bot, watcher
 from .models import Status
@@ -121,6 +121,7 @@ def start_runtime_services() -> None:
 @app.on_event("startup")
 def _startup() -> None:
     storage.init_db()
+    backup.start()        # periodic consistent snapshots of the notes DB
     intake.set_enqueue(lambda rec_id: _pool.submit(runner.process, rec_id))
     watcher.start()
     if settings.is_configured:

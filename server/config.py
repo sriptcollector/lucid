@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     watch_folder: str = "./data/inbox"
     data_dir: str = "./data"
 
+    # --- Backups (consistent SQLite snapshots of the notes DB) ---
+    backup_enabled: bool = True
+    backup_interval_hours: int = 24
+    backup_keep: int = 14                   # snapshots retained (older pruned)
+    backup_dir: str = ""                    # default: <data>/backups
+
     # --- Plaud cloud auto-poll (pure-Python client; device Private Cloud Sync) ---
     plaud_cloud_enabled: bool = False
     plaud_email: str = ""
