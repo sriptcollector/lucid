@@ -1,0 +1,100 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucid — Foundations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --serif:"Instrument Serif",Georgia,serif;
+    --sans:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --paper:oklch(0.971 0.004 80);
+    --card:oklch(1 0 0);
+    --ink:oklch(0.24 0.012 60);
+    --ink-soft:oklch(0.46 0.012 60);
+    --muted:oklch(0.62 0.012 60);
+    --line:oklch(0.915 0.006 83);
+    --accent:oklch(0.60 0.135 42);     /* clay (warm) */
+    --tile-cool:oklch(0.62 0.11 245);  /* slate (cool) */
+    --radius:22px; --radius-sm:14px;
+    --sh-card:0 1px 2px oklch(0.4 0.02 60/.05), 0 18px 48px oklch(0.4 0.02 60/.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);
+    letter-spacing:-.011em;-webkit-font-smoothing:antialiased;padding:34px 28px 48px}
+  h2.k{font-family:var(--serif);font-weight:400;font-size:30px;margin-bottom:2px}
+  .lede{color:var(--muted);font-size:14px;margin-bottom:26px}
+  section{margin-bottom:30px}
+  .label{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+  .swatches{display:flex;flex-wrap:wrap;gap:12px}
+  .sw{width:128px}
+  .sw .chip{height:62px;border-radius:14px;border:1px solid var(--line);box-shadow:var(--sh-card)}
+  .sw .n{font-size:12px;font-weight:600;margin-top:7px}
+  .sw .v{font-size:11px;color:var(--muted)}
+  .type .row{display:flex;align-items:baseline;gap:14px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .type .meta{width:120px;font-size:12px;color:var(--muted);flex:none}
+  .d1{font-family:var(--serif);font-size:34px}
+  .d2{font-family:var(--serif);font-size:24px}
+  .b1{font-size:16px}
+  .cap{font-size:13px;color:var(--muted)}
+  .tiles{display:flex;gap:14px;flex-wrap:wrap}
+  .tile{position:relative;width:120px;height:120px;border-radius:20px;overflow:hidden;box-shadow:var(--sh-card);
+    background:
+      radial-gradient(120% 120% at 16% 10%, var(--tw), transparent 60%),
+      radial-gradient(120% 120% at 86% 90%, var(--tc), transparent 62%),
+      linear-gradient(150deg, color-mix(in oklch,var(--tw) 70%,white), color-mix(in oklch,var(--tc) 70%, white));
+    filter:saturate(1.04)}
+  .tile::after{content:"";position:absolute;width:46px;height:46px;border:1.5px solid oklch(0.3 0.02 60/.55);
+    border-radius:50%;right:16%;top:30%}
+  .pos{--tw:oklch(0.74 0.13 52);--tc:oklch(0.7 0.12 250)}
+  .neu{--tw:oklch(0.7 0.05 250);--tc:oklch(0.72 0.05 200)}
+  .ten{--tw:oklch(0.66 0.16 30);--tc:oklch(0.5 0.06 280)}
+  .cap2{font-size:12px;color:var(--muted);margin-top:6px;text-align:center;width:120px}
+  .shadowbox{display:flex;gap:18px;flex-wrap:wrap}
+  .shadowbox .b{width:130px;height:78px;background:var(--card);border-radius:18px;box-shadow:var(--sh-card);
+    display:grid;place-items:center;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+  <h2 class="k">Lucid — Foundations</h2>
+  <div class="lede">Calm gallery: a cooler paper, pure-white cards, soft deep shadow, clay + slate.</div>
+
+  <section>
+    <div class="label">Surfaces &amp; ink</div>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:oklch(0.971 0.004 80)"></div><div class="n">Paper</div><div class="v">canvas</div></div>
+      <div class="sw"><div class="chip" style="background:#fff"></div><div class="n">Card</div><div class="v">pure white</div></div>
+      <div class="sw"><div class="chip" style="background:oklch(0.24 0.012 60)"></div><div class="n">Ink</div><div class="v">body / actions</div></div>
+      <div class="sw"><div class="chip" style="background:oklch(0.62 0.012 60)"></div><div class="n">Muted</div><div class="v">captions</div></div>
+      <div class="sw"><div class="chip" style="background:oklch(0.60 0.135 42)"></div><div class="n">Clay</div><div class="v">warm accent</div></div>
+      <div class="sw"><div class="chip" style="background:oklch(0.62 0.11 245)"></div><div class="n">Slate</div><div class="v">cool accent</div></div>
+    </div>
+  </section>
+
+  <section class="type">
+    <div class="label">Type — Instrument Serif + Hanken Grotesk</div>
+    <div class="row"><div class="meta">Display / serif</div><div class="d1">Tuesday with Maya</div></div>
+    <div class="row"><div class="meta">Heading / serif</div><div class="d2">A pricing idea worth testing</div></div>
+    <div class="row"><div class="meta">Body / sans</div><div class="b1">A warm, fast catch-up that turned into a concrete plan.</div></div>
+    <div class="row"><div class="meta">Caption / sans</div><div class="cap">Recorded · 2 days ago · 14 min</div></div>
+  </section>
+
+  <section>
+    <div class="label">Generative sentiment tiles — Lucid's "hero" (no photos)</div>
+    <div class="tiles">
+      <div><div class="tile pos"></div><div class="cap2">Positive</div></div>
+      <div><div class="tile neu"></div><div class="cap2">Neutral / analytical</div></div>
+      <div><div class="tile ten"></div><div class="cap2">Tense</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="label">Elevation — one soft, deep card shadow</div>
+    <div class="shadowbox"><div class="b">--sh-card</div></div>
+  </section>
+</body>
+</html>

@@ -1,0 +1,180 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucid — Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --serif:"Instrument Serif",Georgia,serif;
+    --sans:"Hanken Grotesk",system-ui,-apple-system,sans-serif;
+    --paper:oklch(0.971 0.004 80);--card:oklch(1 0 0);
+    --ink:oklch(0.24 0.012 60);--ink-soft:oklch(0.46 0.012 60);--muted:oklch(0.62 0.012 60);
+    --line:oklch(0.915 0.006 83);--accent:oklch(0.60 0.135 42);
+    --radius:22px;
+    --sh-card:0 1px 2px oklch(0.4 0.02 60/.05), 0 18px 48px oklch(0.4 0.02 60/.10);
+    --sh-soft:0 1px 2px oklch(0.4 0.02 60/.04), 0 6px 18px oklch(0.4 0.02 60/.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);letter-spacing:-.011em;
+    -webkit-font-smoothing:antialiased}
+  .phone{max-width:430px;margin:0 auto;min-height:100vh;padding:0 18px 120px;position:relative}
+
+  .appbar{display:flex;align-items:center;gap:11px;padding:22px 4px 14px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand .rx{width:30px;height:30px;display:grid;place-items:center;background:var(--ink);color:var(--paper);
+    border-radius:9px;font-family:var(--serif);font-size:20px}
+  .brand .wm{font-family:var(--serif);font-size:24px}
+  .grow{flex:1}
+  .iconbtn{width:38px;height:38px;border-radius:50%;background:var(--card);box-shadow:var(--sh-soft);display:grid;place-items:center;font-size:16px;color:var(--ink-soft)}
+
+  .hero{padding:8px 2px 4px}
+  .hello{font-size:14px;font-weight:500;color:var(--muted)}
+  .hero h1{font-family:var(--serif);font-weight:400;font-size:33px;line-height:1.05;margin-top:2px}
+  .hero h1 .c{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--muted)}
+  .stats{display:flex;gap:16px;font-size:13px;color:var(--muted);margin-top:11px;font-weight:500}
+  .stats b{color:var(--ink);font-weight:700}
+
+  .filters{display:flex;gap:8px;margin:18px 2px 6px;flex-wrap:wrap}
+  .chip{font-size:13px;font-weight:600;color:var(--ink-soft);background:var(--card);box-shadow:var(--sh-soft);
+    border-radius:999px;padding:8px 14px}
+  .chip.on{background:var(--ink);color:#fff;box-shadow:none}
+
+  /* deck: hero (latest) card with one peeking behind */
+  .deck{position:relative;margin:20px 0 8px}
+  .deck .behind{position:absolute;left:14px;right:14px;top:-12px;height:60px;background:var(--card);
+    border-radius:var(--radius);box-shadow:var(--sh-soft);opacity:.7}
+  .hcard{position:relative;background:var(--card);border-radius:var(--radius);box-shadow:var(--sh-card);padding:18px}
+  .hcard .htile{height:172px;border-radius:18px;overflow:hidden;position:relative;
+    background:
+      radial-gradient(120% 120% at 14% 8%, var(--tw), transparent 58%),
+      radial-gradient(120% 120% at 88% 92%, var(--tc), transparent 60%),
+      linear-gradient(150deg, color-mix(in oklch,var(--tw) 68%,white), color-mix(in oklch,var(--tc) 68%, white));
+    filter:saturate(1.05)}
+  .hcard .htile::after{content:"";position:absolute;width:62px;height:62px;border:1.5px solid oklch(0.3 0.02 60/.5);
+    border-radius:50%;right:18%;top:32%}
+  .hcard .cap{font-size:12.5px;color:var(--muted);font-weight:500;margin-top:14px}
+  .hcard h2{font-family:var(--serif);font-weight:400;font-size:26px;line-height:1.1;margin:5px 0 6px}
+  .hcard .sum{font-size:15px;color:var(--ink-soft);line-height:1.5}
+  .hcard .foot{display:flex;align-items:center;gap:8px;margin-top:15px}
+
+  .daylabel{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:24px 2px 12px}
+  .feed{display:flex;flex-direction:column;gap:14px}
+  .rcard{display:flex;gap:14px;background:var(--card);border-radius:var(--radius);box-shadow:var(--sh-card);padding:15px}
+  .tile{position:relative;width:96px;flex:none;border-radius:16px;overflow:hidden;min-height:96px;
+    background:
+      radial-gradient(120% 120% at 16% 10%, var(--tw), transparent 60%),
+      radial-gradient(120% 120% at 86% 90%, var(--tc), transparent 62%),
+      linear-gradient(150deg, color-mix(in oklch,var(--tw) 70%,white), color-mix(in oklch,var(--tc) 70%, white));
+    filter:saturate(1.04)}
+  .tile::after{content:"";position:absolute;width:38px;height:38px;border:1.5px solid oklch(0.3 0.02 60/.5);
+    border-radius:50%;right:15%;top:30%}
+  .pos{--tw:oklch(0.74 0.13 52);--tc:oklch(0.7 0.12 250)}
+  .neu{--tw:oklch(0.7 0.05 250);--tc:oklch(0.72 0.05 200)}
+  .ten{--tw:oklch(0.66 0.16 30);--tc:oklch(0.5 0.06 280)}
+  .warm{--tw:oklch(0.76 0.13 60);--tc:oklch(0.66 0.1 30)}
+  .rbody{flex:1;min-width:0;display:flex;flex-direction:column}
+  .rbody .cap{font-size:12px;color:var(--muted);font-weight:500}
+  .rbody h3{font-family:var(--serif);font-weight:400;font-size:19px;line-height:1.12;margin:4px 0 3px}
+  .rbody .sum{font-size:13.5px;color:var(--ink-soft);line-height:1.42;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .foot{display:flex;align-items:center;gap:7px;margin-top:auto;padding-top:10px}
+  .pill{font-size:12px;font-weight:600;color:var(--ink-soft);background:oklch(0.955 0.004 80);border-radius:999px;padding:5px 11px;white-space:nowrap}
+  .pill .pdot{display:inline-block;width:13px;height:13px;border-radius:50%;margin-right:5px;vertical-align:-2px;
+    background:linear-gradient(135deg,var(--accent),oklch(0.62 0.11 245))}
+  .iconcircle{width:32px;height:32px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:14px;margin-left:auto;flex:none}
+
+  .fab{position:fixed;right:max(22px,calc(50% - 215px + 22px));bottom:96px;width:56px;height:56px;border-radius:50%;
+    background:var(--ink);color:#fff;display:grid;place-items:center;font-size:27px;box-shadow:0 10px 26px oklch(0.3 0.02 60/.32)}
+  .nav{position:fixed;left:0;right:0;bottom:18px;display:flex;justify-content:center;pointer-events:none}
+  .navbar{display:flex;gap:2px;background:var(--card);box-shadow:var(--sh-card);border-radius:999px;padding:7px;pointer-events:auto}
+  .navbar button{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;font-weight:600;color:var(--muted);padding:7px 13px;border-radius:999px;border:none;background:none}
+  .navbar button .ic{font-size:15px}
+  .navbar button.active{color:var(--ink);background:oklch(0.955 0.004 80)}
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="appbar">
+      <div class="brand"><span class="rx">L</span><span class="wm">Lucid</span></div>
+      <div class="grow"></div>
+      <div class="iconbtn">&#9681;</div>
+    </div>
+
+    <div class="hero">
+      <div class="hello">Good evening, Orion</div>
+      <h1>Your notes <span class="c">· 41</span></h1>
+      <div class="stats"><span><b>3</b> this week</span><span><b>65</b> people</span><span><b>12</b> ideas</span></div>
+    </div>
+
+    <div class="filters">
+      <span class="chip on">All</span>
+      <span class="chip">Ideas</span>
+      <span class="chip">People</span>
+      <span class="chip">Action items</span>
+    </div>
+
+    <div class="deck">
+      <div class="behind"></div>
+      <div class="hcard">
+        <div class="htile pos"></div>
+        <div class="cap">Latest · Recorded 2 hours ago · 18 min</div>
+        <h2>Tuesday with Maya</h2>
+        <div class="sum">A warm catch-up that turned into a concrete pricing experiment for the fall launch — Maya will draft the tiers, you'll test with five customers.</div>
+        <div class="foot">
+          <span class="pill">pricing</span>
+          <span class="pill"><span class="pdot"></span>Maya</span>
+          <span class="pill">2 action items</span>
+          <span class="iconcircle">&rarr;</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="daylabel">Earlier this week</div>
+    <div class="feed">
+      <div class="rcard">
+        <div class="tile ten"></div>
+        <div class="rbody">
+          <div class="cap">Recorded · 5 days ago · 32 min</div>
+          <h3>Co-founder check-in</h3>
+          <div class="sum">An honest, slightly tense talk about runway and who owns the roadmap going into Q3.</div>
+          <div class="foot"><span class="pill">roadmap</span><span class="pill"><span class="pdot"></span>Andrew</span><span class="iconcircle">&rarr;</span></div>
+        </div>
+      </div>
+      <div class="rcard">
+        <div class="tile neu"></div>
+        <div class="rbody">
+          <div class="cap">Recorded · 6 days ago · 9 min</div>
+          <h3>Reading notes — attention &amp; focus</h3>
+          <div class="sum">A solo voice memo capturing three ideas about deep work and how to protect mornings.</div>
+          <div class="foot"><span class="pill">focus</span><span class="pill">idea</span><span class="iconcircle">&rarr;</span></div>
+        </div>
+      </div>
+      <div class="rcard">
+        <div class="tile warm"></div>
+        <div class="rbody">
+          <div class="cap">Recorded · 6 days ago · 21 min</div>
+          <h3>Coffee with Sam</h3>
+          <div class="sum">Reconnecting after a while — Sam's hiring, and there might be a referral worth following up on.</div>
+          <div class="foot"><span class="pill">intro</span><span class="pill"><span class="pdot"></span>Sam</span><span class="iconcircle">&rarr;</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fab">+</div>
+  <div class="nav">
+    <div class="navbar">
+      <button class="active"><span class="ic">&#9635;</span>Notes</button>
+      <button><span class="ic">&#9906;</span>Search</button>
+      <button><span class="ic">&#9737;</span>People</button>
+      <button><span class="ic">&#9671;</span>Ideas</button>
+      <button><span class="ic">&#9881;</span>Settings</button>
+    </div>
+  </div>
+</body>
+</html>
