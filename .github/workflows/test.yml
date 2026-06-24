@@ -1,0 +1,35 @@
+name: Tests
+
+# Fast unit tests for the always-light core (config layering, storage round-trips,
+# models, backups, the stable-link page). Runs on every push and every pull
+# request so a change can't silently break the foundations of the notes
+# pipeline. Full-app boot is smoke-tested separately in build-apps.yml.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: Unit tests (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        # The covered modules only need pydantic + pydantic-settings, so we keep
+        # CI lean and fast (no heavy ML stack) — it stays green whenever the code
+        # is actually fine, which is what makes it a trustworthy PR gate.
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pydantic>=2.10" "pydantic-settings>=2.7" pytest
+
+      - name: Run tests
+        run: pytest
