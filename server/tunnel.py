@@ -173,7 +173,27 @@ class _TunnelManager:
         except Exception as exc:  # noqa: BLE001
             print(f"[tunnel] could not persist URL: {exc}")
         print(f"[tunnel] live at {url}")
+        self._publish_stable(url)
         self._maybe_notify(url)
+
+    def _publish_stable(self, url: str) -> None:
+        """Best-effort: refresh the permanent redirect link in the background.
+
+        Runs off the tunnel thread (a GitHub API round-trip can take a few
+        seconds) and swallows everything — the convenience link must never be
+        able to stall or break the tunnel.
+        """
+        if not settings.stable_link_repo.strip():
+            return
+
+        def _run() -> None:
+            try:
+                from . import public_link
+                public_link.publish(url)
+            except Exception:  # noqa: BLE001 - link update must never break tunnel
+                pass
+
+        threading.Thread(target=_run, name="lucid-link", daemon=True).start()
 
     def _maybe_notify(self, url: str) -> None:
         """Best-effort, generic notification if Telegram is configured.

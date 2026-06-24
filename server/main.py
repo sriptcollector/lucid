@@ -149,6 +149,7 @@ def health() -> dict:
         "plaud_cloud_enabled": settings.plaud_cloud_enabled,
         "plaud_logged_in": settings.plaud_logged_in,
         "tunnel": tunnel.status(),
+        "stable_url": settings.stable_public_url,
     }
 
 
@@ -381,6 +382,7 @@ def get_settings() -> dict:
         "plaud_poll_interval": settings.plaud_poll_interval,
         "tunnel_enabled": settings.tunnel_enabled,
         "public_url": settings.current_public_url(),
+        "stable_url": settings.stable_public_url,
         "telegram_connected": bool(settings.telegram_enabled and settings.telegram_bot_token),
         "telegram_chat_known": _telegram_chat_known(),
     }

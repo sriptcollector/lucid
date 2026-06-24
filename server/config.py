@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     tunnel_enabled: bool = True             # ON by default for the product
     cloudflared_path: str = ""
 
+    # --- Stable public link (optional; owner-only) ---
+    # When set to "owner/repo", Lucid keeps a redirect page on that repo's
+    # gh-pages branch pointed at the live tunnel URL, giving friends ONE
+    # permanent link: https://owner.github.io/repo/ . Requires a logged-in `gh`
+    # CLI on the host. Blank = disabled (friends just use the tunnel URL).
+    stable_link_repo: str = ""
+    stable_link_branch: str = "gh-pages"
+    gh_path: str = ""                       # explicit path to gh CLI (else PATH)
+
     # --- Onboarding state ---
     setup_complete: bool = False
 
@@ -190,6 +199,18 @@ class Settings(BaseSettings):
     @property
     def public_url_file(self) -> Path:
         return self.data_path / "public_url.txt"
+
+    @property
+    def stable_public_url(self) -> str:
+        """Permanent github.io link derived from ``stable_link_repo``, or ''."""
+        repo = self.stable_link_repo.strip()
+        if "/" not in repo:
+            return ""
+        owner, _, name = repo.partition("/")
+        owner, name = owner.strip(), name.strip()
+        if not owner or not name:
+            return ""
+        return f"https://{owner.lower()}.github.io/{name}/"
 
     # ------------------------------------------------------------------ #
     # Tokens / auth
