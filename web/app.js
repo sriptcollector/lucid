@@ -74,7 +74,103 @@ const App = (() => {
     if (p==="/ventures"){ setTab("ventures"); return showVentures(); }
     if (p==="/search"){ setTab("search"); return showSearch(); }
     if (p==="/settings"){ setTab("settings"); return showSettings(); }
+    if (p==="/crm"){ setTab("crm"); return showCRM(); }
     setTab("home"); return showHome(); }
+
+  // ===== CRM (orionscrm roster: clients / leads / network) =====
+  let crmData=null, crmFilter="all";
+  const CRM_GROUPS=[
+    {k:"client",label:"Clients",test:c=>c.is_client},
+    {k:"lead",label:"Leads",test:c=>!c.is_client&&c.bucket!=="business"},
+    {k:"network",label:"Network",test:c=>c.bucket==="business"},
+  ];
+  const stageColor=(c)=>{ const s=(c.stage||"").toLowerCase();
+    if (c.is_client) return "var(--pos)";
+    if (s.includes("refus")||s.includes("ghost")) return "var(--ten)";
+    return "var(--accent)"; };
+  function crmDay(iso){ if(!iso) return ""; const d=new Date(iso); return isNaN(d)?"":d.toLocaleDateString(undefined,{month:"short",day:"numeric"}); }
+
+  async function showCRM(){
+    app.innerHTML=`<div class="view"><div class="hero"><h1>CRM…</h1></div>${skeletons(3)}</div>`;
+    let d; try { d=await api("/api/crm/board"); } catch(e){ return authOrError(e,showCRM); }
+    crmData=d; document.getElementById("subline").textContent="CRM";
+    paintCRM();
+  }
+
+  function crmCard(c){
+    const col=stageColor(c);
+    const owe=(c.action==="reply"||c.action==="follow_up");
+    const meta=[c.stage, c.next_meeting?("📅 "+crmDay(c.next_meeting)):"", (c.todos&&c.todos.length?("✅ "+c.todos.length):"")].filter(Boolean);
+    return `<div class="rcard crmcard" data-email="${h(c.email)}" style="--mc:${col}">
+      <div class="tile" style="background:${col}"></div>
+      <div class="rbody">
+        <h3>${h(c.company||c.name)}</h3>
+        <div class="snip">${h(c.name!==(c.company||c.name)?c.name+" · ":"")}${h(c.summary||"")}</div>
+        <div class="rmeta">
+          ${owe?`<span class="chip" style="background:${col};color:#fff">${h(c.situation_icon)} ${h(c.situation||"Respond")}</span>`:""}
+          ${meta.map(m=>`<span class="chip">${h(m)}</span>`).join("")}
+          <span class="time">${rel(new Date(c.last_ts||Date.now()).toISOString())}</span>
+        </div>
+      </div></div>`;
+  }
+
+  function paintCRM(){
+    const d=crmData||{contacts:[],stats:{}};
+    if (d.missing){ app.innerHTML=`<div class="view"><div class="hero"><h1>CRM</h1></div>
+      <div class="empty"><div class="big">◌</div>No CRM export yet.
+      <div class="hint">Run the orionscrm sync — it writes the roster here automatically.</div></div></div>`; return; }
+    const s=d.stats||{};
+    const groups=crmFilter==="all"?CRM_GROUPS:CRM_GROUPS.filter(g=>g.k===crmFilter);
+    const sections=groups.map(g=>{
+      const list=(d.contacts||[]).filter(g.test);
+      if(!list.length) return "";
+      return `<div class="daygroup"><div class="daylabel">${g.label} · ${list.length}</div>
+        <div class="feed">${list.map(crmCard).join("")}</div></div>`;
+    }).join("");
+    const chips=[{k:"all",l:"All"},{k:"client",l:`Clients ${s.clients||0}`},{k:"lead",l:`Leads ${s.leads||0}`},{k:"network",l:`Network ${s.network||0}`}]
+      .map(f=>`<button class="fchip ${crmFilter===f.k?"on":""}" data-f="${f.k}">${f.l}</button>`).join("");
+    app.innerHTML=`<div class="view">
+      <div class="hero"><div class="greeting">Your book of business</div>
+        <h1>CRM <span class="count">${(d.contacts||[]).length} contacts</span></h1>
+        <div class="stats"><span><b>${s.clients||0}</b> clients</span>
+          <span><span class="stat-dot"></span><b>${s.leads||0}</b> leads</span>
+          <span><b>${s.network||0}</b> network</span></div></div>
+      <div class="filterbar">${chips}</div>
+      ${sections||`<div class="empty"><div class="big">◌</div>Nothing in this view.</div>`}</div>`;
+    app.querySelectorAll(".filterbar .fchip").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
+    app.querySelectorAll(".crmcard").forEach(c=>c.onclick=()=>showCRMContact(c.dataset.email));
+  }
+
+  function showCRMContact(email){
+    const c=((crmData||{}).contacts||[]).find(x=>x.email===email);
+    if(!c){ go("/crm"); return; }
+    const col=stageColor(c);
+    const draft=c.draft?`<div class="panel"><h2>✍️ Suggested ${c.draft_kind==="follow_up"?"follow-up":"reply"}</h2>
+      <div class="draftbox">${h(c.draft)}</div>
+      <div class="row"><button class="btn ghost" id="copyDraft">Copy draft</button></div></div>`:"";
+    const todos=(c.todos&&c.todos.length)?`<div class="panel"><h2>✅ To-dos from your meetings</h2>
+      <ul class="kvlist">${c.todos.map(t=>`<li>${h(t)}</li>`).join("")}</ul></div>`:"";
+    const tl=(c.timeline||[]).slice().reverse().map(t=>{
+      const icon=t.lucid?"🎙️":(t.kind==="meeting"?"📅":(t.kind==="sms"?"💬":(t.direction==="out"?"↗":"↙")));
+      const link=t.link?` <a href="${h(t.link)}" target="_blank" rel="noopener">open ↗</a>`:"";
+      return `<li><span class="tldate">${h(t.date)}</span> <b>${icon} ${h(t.subject||"(no subject)")}</b>${link}<div class="tlsum">${h(t.summary||"")}</div></li>`;
+    }).join("");
+    const links=[c.notion_url?`<a class="btn ghost" href="${h(c.notion_url)}" target="_blank" rel="noopener">Open in Notion ↗</a>`:""].filter(Boolean).join("");
+    app.innerHTML=`<div class="view detail">
+      <button class="back" onclick="history.back()">← CRM</button>
+      <div class="hero"><div class="greeting">${h(c.company||"")}</div>
+        <h1>${h(c.name)}</h1>
+        <div class="stats"><span class="chip" style="background:${col};color:#fff">${h(c.stage)}</span>
+          ${c.next_meeting?`<span class="chip">📅 ${h(crmDay(c.next_meeting))}</span>`:""}
+          <span class="chip">${h(c.email)}</span></div>
+        <p class="lead">${h(c.summary||"")}</p>
+        <div class="row">${links}</div></div>
+      ${draft}${todos}
+      <div class="panel"><h2>🧵 Timeline</h2><ul class="crmtl">${tl||"<li>No history yet.</li>"}</ul></div>
+    </div>`;
+    const cp=document.getElementById("copyDraft");
+    if(cp) cp.onclick=()=>{ navigator.clipboard.writeText(c.draft||"").then(()=>toast("Draft copied")); };
+  }
 
   // ===== HOME =====
   function skeletons(n=4){ return `<div class="feed">${Array(n).fill(0).map(()=>`

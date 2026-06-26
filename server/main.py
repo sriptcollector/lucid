@@ -964,6 +964,21 @@ async def rename_person(rec_id: str, request: Request) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# CRM board — the orionscrm roster (clients / leads / network). orionscrm exports
+# its rich roster into data/crm_export.json on each sync; we just read + serve it,
+# so Lucid + the CRM are one life manager. Read-only.
+# --------------------------------------------------------------------------- #
+@app.get("/api/crm/board", dependencies=[Depends(auth)])
+def crm_board() -> JSONResponse:
+    import json as _json
+    path = settings.crm_contacts_path.parent / "crm_export.json"
+    try:
+        return JSONResponse(_json.loads(path.read_text(encoding="utf-8")))
+    except Exception:
+        return JSONResponse({"generated_at": "", "stats": {}, "contacts": [], "missing": True})
+
+
+# --------------------------------------------------------------------------- #
 # Web UI — setup gate + SPA (served last so /api/* wins)
 # --------------------------------------------------------------------------- #
 def _spa() -> FileResponse:
@@ -992,6 +1007,7 @@ def setup_page():
 @app.get("/people")
 @app.get("/directory")
 @app.get("/ventures")
+@app.get("/crm")
 def spa_routes(rec_id: str = "", key: str = "", vid: str = ""):
     return _spa() if settings.is_configured else RedirectResponse("/setup")
 

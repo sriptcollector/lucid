@@ -558,3 +558,20 @@ audio{width:100%;height:38px;}
   main{padding-top:22px;}
   .feed{gap:12px;}
 }
+
+/* ===== CRM (orionscrm roster) ===== */
+.crmcard h3 { margin: 0 0 2px; }
+.draftbox {
+  white-space: pre-wrap; background: var(--card); border-radius: var(--radius-sm);
+  padding: 14px 16px; box-shadow: var(--sh-soft); font-size: .95rem; line-height: 1.55;
+}
+.kvlist { list-style: none; padding: 0; margin: 0; }
+.kvlist li { padding: 8px 0; border-bottom: 1px solid color-mix(in oklch, var(--ink) 8%, transparent); }
+.kvlist li:last-child { border-bottom: none; }
+ul.crmtl { list-style: none; padding: 0; margin: 0; }
+ul.crmtl li { padding: 11px 0; border-bottom: 1px solid color-mix(in oklch, var(--ink) 7%, transparent); }
+ul.crmtl li:last-child { border-bottom: none; }
+.tldate { color: color-mix(in oklch, var(--ink) 50%, transparent); font-size: .8rem; margin-right: 6px; }
+.tlsum { color: color-mix(in oklch, var(--ink) 60%, transparent); font-size: .88rem; margin-top: 3px; }
+ul.crmtl a, .tlsum a { color: var(--accent); text-decoration: none; }
+ul.crmtl a:hover { text-decoration: underline; }
