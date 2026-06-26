@@ -386,6 +386,8 @@ def get_settings() -> dict:
         "stable_url": settings.stable_public_url,
         "telegram_connected": bool(settings.telegram_enabled and settings.telegram_bot_token),
         "telegram_chat_known": _telegram_chat_known(),
+        "owner_name": settings.owner_name,
+        "crm_connected": settings.crm_connected,
     }
 
 
@@ -402,9 +404,13 @@ async def update_settings(request: Request) -> dict:
     body = await request.json()
     allowed = {
         "analysis_model", "translate_to", "plaud_poll_interval",
-        "tunnel_enabled", "whisper_model",
+        "tunnel_enabled", "whisper_model", "owner_name", "crm_autopush",
     }
     updates = {k: v for k, v in body.items() if k in allowed}
+    if "owner_name" in updates:
+        updates["owner_name"] = str(updates["owner_name"] or "").strip()[:80]
+    if "crm_autopush" in updates:
+        updates["crm_autopush"] = bool(updates["crm_autopush"])
     # Validate the few values that could break the pipeline if mistyped.
     if "whisper_model" in updates and updates["whisper_model"] not in \
             {"tiny", "base", "small", "medium", "large-v3"}:
@@ -419,6 +425,97 @@ async def update_settings(request: Request) -> dict:
     if "tunnel_enabled" in updates:
         # tunnel.stop()/restart() do blocking joins — keep them off the loop.
         await asyncio.to_thread(tunnel.restart if updates["tunnel_enabled"] else tunnel.stop)
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# Client manager (Notion CRM)
+# --------------------------------------------------------------------------- #
+def _crm_status() -> dict:
+    from .integrations import notion_crm
+    return {
+        "connected": settings.crm_connected,
+        "enabled": settings.crm_enabled,
+        "database_id": settings.crm_database_id,
+        "owner_name": settings.owner_name,
+        "autopush": settings.crm_autopush,
+        "contact_count": len(notion_crm.load_contacts()),
+        "last_refresh": notion_crm.last_refresh(),
+        "pending": len(notion_crm.list_pending()),
+    }
+
+
+@app.get("/api/crm/status", dependencies=[Depends(auth)])
+def crm_status() -> dict:
+    return _crm_status()
+
+
+@app.post("/api/crm/connect", dependencies=[Depends(auth)])
+async def crm_connect(request: Request) -> dict:
+    from .integrations import notion_crm
+    body = await request.json()
+    token = (body.get("token") or "").strip()
+    db_in = (body.get("database") or body.get("database_id") or "").strip()
+    owner = (body.get("owner_name") or "").strip()
+
+    if token:
+        settings.set_notion_token(token)
+    updates: dict = {}
+    if db_in:
+        db_id = notion_crm.extract_db_id(db_in)
+        if not db_id:
+            raise HTTPException(400, "That doesn't look like a Notion database link.")
+        updates["crm_database_id"] = db_id
+    if owner:
+        updates["owner_name"] = owner[:80]
+    if updates:
+        settings.save_config(updates)
+
+    ok, msg, title = notion_crm.test_and_describe()
+    if not ok:
+        raise HTTPException(400, f"Couldn't reach that Notion database — {msg}")
+    settings.save_config({"crm_enabled": True})
+    count = await asyncio.to_thread(notion_crm.refresh_contacts)
+    sample = [c["name"] for c in notion_crm.load_contacts()[:8]]
+    return {"ok": True, "database_title": title, "contact_count": count,
+            "sample": sample, "status": _crm_status()}
+
+
+@app.delete("/api/crm/connect", dependencies=[Depends(auth)])
+def crm_disconnect() -> dict:
+    settings.clear_notion_token()
+    settings.save_config({"crm_enabled": False})
+    return {"ok": True}
+
+
+@app.post("/api/crm/refresh", dependencies=[Depends(auth)])
+async def crm_refresh() -> dict:
+    from .integrations import notion_crm
+    if not settings.crm_connected:
+        raise HTTPException(400, "Not connected to Notion.")
+    count = await asyncio.to_thread(notion_crm.refresh_contacts)
+    return {"ok": True, "contact_count": count}
+
+
+@app.get("/api/crm/pending", dependencies=[Depends(auth)])
+def crm_pending() -> list:
+    from .integrations import notion_crm
+    return notion_crm.list_pending()
+
+
+@app.post("/api/crm/pending/resolve", dependencies=[Depends(auth)])
+async def crm_resolve(request: Request) -> dict:
+    from .integrations import notion_crm
+    body = await request.json()
+    ok = await asyncio.to_thread(
+        notion_crm.resolve_pending,
+        (body.get("rec_id") or "").strip(),
+        (body.get("person") or "").strip(),
+        bool(body.get("confirm")),
+        (body.get("page_id") or "").strip() or None,
+    )
+    if not ok:
+        raise HTTPException(404, "No such pending match.")
     return {"ok": True}
 
 

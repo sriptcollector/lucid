@@ -1020,9 +1020,11 @@ const App = (() => {
   // ===== SETTINGS =====
   async function showSettings(){
     app.innerHTML=`<div class="view"><div class="hero"><h1>Settings</h1></div>${skeletons(2)}</div>`;
-    let st={}, sys={systems:[]};
+    let st={}, sys={systems:[]}, crm={}, pend=[];
     try { st=await api("/api/settings"); } catch(e){ return authOrError(e,showSettings); }
     try { sys=await api("/api/systems"); } catch(e){}
+    try { crm=await api("/api/crm/status"); } catch(e){}
+    try { pend=await api("/api/crm/pending"); } catch(e){}
     const url=st.public_url||"";
     const share = url ? `<div class="sharebox">
         <div class="badge"><span class="dot"></span>Your link is live</div>
@@ -1034,6 +1036,40 @@ const App = (() => {
 
     const sysHTML=(sys.systems||[]).map(s=>`<div class="syschip">
         <span class="sdot ${s.ok}"></span><span class="slab">${h(s.label)}</span><span class="sdet">${h(s.detail)}</span></div>`).join("");
+
+    const lastSync = crm.last_refresh ? new Date(crm.last_refresh*1000).toLocaleString() : "never";
+    const crmPanel = crm.connected ? `
+      <div class="panel"><h2>Client manager · Notion</h2>
+        <div class="kv"><span class="k">Connection</span><span class="v ok">Connected · ${crm.contact_count||0} clients</span></div>
+        <div class="kv"><span class="k">Last synced</span><span class="v">${h(lastSync)}</span></div>
+        <div class="field" style="margin-top:12px"><label>Your name (so your own voice notes get attributed to you)</label>
+          <input id="crmOwner" placeholder="e.g. Orion Jones" value="${attr(crm.owner_name||"")}" autocomplete="off"></div>
+        <label class="kv" style="cursor:pointer"><span class="k">Auto-log notes onto client pages</span>
+          <input type="checkbox" id="crmPush" ${crm.autopush?"checked":""}></label>
+        <div class="btnrow" style="margin-top:14px">
+          <button class="btn" id="crmSync">Sync clients now</button>
+          <button class="btn ghost" id="crmSave">Save</button>
+          <button class="btn ghost" id="crmDisc">Disconnect</button></div>
+      </div>` : `
+      <div class="panel"><h2>Client manager · Notion</h2>
+        <p style="color:var(--muted);font-size:14px;margin:0 0 12px;line-height:1.55">Connect your Notion client database so Lucid spells client names right and logs each conversation onto the client's page. <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener">Create an integration</a>, copy its secret, then open your clients database in Notion → <b>•••</b> → <b>Connections</b> → add your integration.</p>
+        <div class="field"><label>Notion integration secret</label><input id="crmToken" placeholder="ntn_… or secret_…" autocomplete="off"></div>
+        <div class="field"><label>Clients database link</label><input id="crmDb" placeholder="https://www.notion.so/…" autocomplete="off"></div>
+        <div class="field"><label>Your name (so your own voice notes get attributed to you)</label><input id="crmOwner" placeholder="e.g. Orion Jones" value="${attr(crm.owner_name||"")}" autocomplete="off"></div>
+        <div class="btnrow" style="margin-top:6px"><button class="btn" id="crmConnect">Connect Notion</button></div>
+        <div id="crmMsg" style="font-size:13px;color:var(--muted);margin-top:10px"></div>
+      </div>`;
+
+    const pendPanel = (pend&&pend.length) ? `
+      <div class="panel"><h2>Confirm client matches</h2>
+        <p style="color:var(--muted);font-size:13.5px;margin:0 0 12px;line-height:1.5">Lucid wasn't sure these people are clients. Link them to the right client or dismiss.</p>
+        ${pend.map(p=>`<div style="padding:10px 0;border-top:1px solid var(--line)">
+          <div style="font-weight:600">${h(p.person)} <span class="muted" style="font-weight:400;font-size:13px">· ${h(p.rec_title||"")}</span></div>
+          <div class="btnrow" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+            ${(p.candidates||[]).map(c=>`<button class="btn ghost crmLink" data-rec="${attr(p.rec_id)}" data-person="${attr(p.person)}" data-page="${attr(c.id)}">Link to ${h(c.name)}</button>`).join("")}
+            <button class="btn ghost crmNo" data-rec="${attr(p.rec_id)}" data-person="${attr(p.person)}">Not a client</button>
+          </div></div>`).join("")}
+      </div>` : "";
 
     app.innerHTML=`<div class="view">
       <div class="hero"><h1>Settings</h1></div>
@@ -1048,6 +1084,8 @@ const App = (() => {
         <div class="kv"><span class="k">Telegram</span><span class="v ${st.telegram_connected?"ok":""}">${st.telegram_connected?(st.telegram_chat_known?"connected":"connected · message your bot"):"off"}</span></div>
         <div class="btnrow" style="margin-top:14px"><a class="btn ghost" href="/setup">Re-run setup</a>${st.telegram_connected&&st.telegram_chat_known?`<button class="btn ghost" id="tgSend">📲 Send link to my phone</button>`:""}</div>
       </div>
+      ${crmPanel}
+      ${pendPanel}
       <div class="panel"><h2>Appearance</h2>
         <div class="field"><label>Theme</label><select id="themeSel">
           <option value="">Auto (system)</option><option value="dark">Dark</option><option value="light">Light</option></select></div></div>
@@ -1061,6 +1099,30 @@ const App = (() => {
       try{ await api("/api/tunnel/restart",{method:"POST"}); toast("Restarting link…"); setTimeout(showSettings,3500);}catch(e){ toast("Failed"); rt.disabled=false; rt.textContent="Restart public link"; } };
     const ts=document.getElementById("tgSend"); if(ts) ts.onclick=async()=>{ ts.disabled=true;
       try{ const r=await api("/api/setup/telegram/test",{method:"POST"}); toast(r.sent?"Sent to your phone":"Message your bot first"); }catch(e){ toast("Failed"); } ts.disabled=false; };
+
+    // --- Client manager (Notion CRM) ---
+    const byId=id=>document.getElementById(id);
+    const errText=e=>{ let m=String(e&&e.message||"Failed"); try{ const j=JSON.parse(m); if(j.detail) m=j.detail; }catch(_){ } return m; };
+    const cc=byId("crmConnect"); if(cc) cc.onclick=async()=>{
+      const token=byId("crmToken").value.trim(), db=byId("crmDb").value.trim(), owner=byId("crmOwner").value.trim();
+      const msg=byId("crmMsg");
+      if(!token||!db){ msg.textContent="Paste both the integration secret and the database link."; return; }
+      cc.disabled=true; cc.textContent="Connecting…"; msg.textContent="";
+      try{ const r=await api("/api/crm/connect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,database:db,owner_name:owner})});
+        toast(`Connected · ${r.contact_count} clients`); showSettings();
+      }catch(e){ msg.textContent=errText(e); cc.disabled=false; cc.textContent="Connect Notion"; } };
+    const cs=byId("crmSync"); if(cs) cs.onclick=async()=>{ cs.disabled=true; cs.textContent="Syncing…";
+      try{ const r=await api("/api/crm/refresh",{method:"POST"}); toast(`Synced · ${r.contact_count} clients`); }catch(e){ toast(errText(e)); }
+      cs.disabled=false; cs.textContent="Sync clients now"; };
+    const csv=byId("crmSave"); if(csv) csv.onclick=async()=>{ const owner=byId("crmOwner").value.trim(); const push=byId("crmPush").checked;
+      try{ await api("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({owner_name:owner,crm_autopush:push})}); toast("Saved"); }catch(e){ toast("Failed"); } };
+    const cd=byId("crmDisc"); if(cd) cd.onclick=async()=>{ if(!confirm("Disconnect Notion? Your client data stays in Notion."))return;
+      try{ await api("/api/crm/connect",{method:"DELETE"}); toast("Disconnected"); showSettings(); }catch(e){ toast("Failed"); } };
+    const resolve=async(b,confirm,page)=>{ b.disabled=true;
+      const payload={rec_id:b.dataset.rec,person:b.dataset.person,confirm}; if(page) payload.page_id=page;
+      try{ await api("/api/crm/pending/resolve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); toast(confirm?"Linked":"Dismissed"); showSettings(); }catch(e){ toast("Failed"); b.disabled=false; } };
+    document.querySelectorAll(".crmLink").forEach(b=>b.onclick=()=>resolve(b,true,b.dataset.page));
+    document.querySelectorAll(".crmNo").forEach(b=>b.onclick=()=>resolve(b,false,null));
   }
 
   async function reanalyze(id){ try{ await api(`/api/recordings/${id}/reanalyze`,{method:"POST"}); toast("Re-analyzing…"); showDetail(id);}catch(e){toast("Failed");} }

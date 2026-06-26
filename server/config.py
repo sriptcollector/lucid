@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     plaud_poll_interval: int = 300          # seconds between cloud checks
     plaud_process_backlog: bool = False     # on first run, process ALL existing
 
+    # --- Client manager (CRM): Notion (optional, off until connected) ---
+    crm_enabled: bool = False
+    crm_backend: str = "notion"             # notion (only backend for now)
+    crm_database_id: str = ""               # the shared Notion "clients" database
+    crm_autopush: bool = True               # append note summaries to client pages
+    owner_name: str = ""                    # the recorder ('I'/narrator) for solo notes
+
     # --- Delivery: Telegram (fully optional, off by default) ---
     telegram_enabled: bool = False
     telegram_bot_token: str = ""
@@ -207,6 +214,10 @@ class Settings(BaseSettings):
         return self.data_path / "public_url.txt"
 
     @property
+    def crm_contacts_path(self) -> Path:
+        return self.data_path / "crm_contacts.json"
+
+    @property
     def stable_public_url(self) -> str:
         """Permanent github.io link derived from ``stable_link_repo``, or ''."""
         repo = self.stable_link_repo.strip()
@@ -279,6 +290,23 @@ class Settings(BaseSettings):
             return False
         # No expiry recorded -> assume valid; else require >60s of life left.
         return exp <= 0 or exp > time.time() + 60
+
+    # ------------------------------------------------------------------ #
+    # Notion CRM secret (lives in config.json under "notion_token")
+    # ------------------------------------------------------------------ #
+    def get_notion_token(self) -> str:
+        tok = self._runtime.get("notion_token")
+        return tok if isinstance(tok, str) else ""
+
+    def set_notion_token(self, token: str) -> None:
+        self.save_config({"notion_token": token})
+
+    def clear_notion_token(self) -> None:
+        self.save_config({"notion_token": None})
+
+    @property
+    def crm_connected(self) -> bool:
+        return bool(self.get_notion_token()) and bool(self.crm_database_id)
 
     # ------------------------------------------------------------------ #
     # App-password store (PBKDF2 hash in config.json; never the plaintext)

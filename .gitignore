@@ -26,3 +26,4 @@ bin/
 # --- OS / editor / JS tooling cruft ---
 .DS_Store
 node_modules/
+.gstack/

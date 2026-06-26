@@ -304,9 +304,10 @@ def analyze(rec: Recording) -> Analysis:
 
     duration = f"{rec.duration:.0f}s" if rec.duration else "unknown"
     user_msg = (
-        f"Recording duration: {duration}. Language: {rec.language or 'unknown'}.\n"
-        f"Number of segments: {len(rec.segments)}.\n\n"
-        f"TRANSCRIPT:\n{transcript}"
+        _known_context()
+        + f"Recording duration: {duration}. Language: {rec.language or 'unknown'}.\n"
+        + f"Number of segments: {len(rec.segments)}.\n\n"
+        + f"TRANSCRIPT:\n{transcript}"
     )
 
     msg = client.messages.create(
@@ -322,6 +323,46 @@ def analyze(rec: Recording) -> Analysis:
 
     data = _extract_tool_input(msg)
     return _to_analysis(data)
+
+
+def _known_context() -> str:
+    """A short, uncached preamble that anchors names to the truth: who the
+    recorder is (so solo voice notes get the owner's name right) and the real
+    client names (so the AI uses the correct spelling instead of guessing).
+
+    Lives in the user message, NOT the cached system prompt, so prompt caching
+    still hits across recordings even as the roster changes.
+    """
+    lines: list[str] = []
+    try:
+        owner = (settings.owner_name or "").strip()
+    except Exception:
+        owner = ""
+    if owner:
+        lines.append(
+            f"- The person recording this (the first-person \"I\" / the narrator) "
+            f"is {owner}. Attribute their words to {owner} and use this exact "
+            f"spelling for their name."
+        )
+    names: list[str] = []
+    try:
+        from ..integrations import notion_crm
+        names = notion_crm.roster_names()
+    except Exception:
+        names = []
+    if names:
+        lines.append(
+            "- KNOWN CLIENTS — when a spoken name clearly refers to one of these "
+            "people, use this EXACT spelling (don't invent a different spelling): "
+            + ", ".join(names) + "."
+        )
+    if not lines:
+        return ""
+    return (
+        "KNOWN CONTEXT (authoritative — use it to get names right):\n"
+        + "\n".join(lines)
+        + "\n\n"
+    )
 
 
 def _extract_tool_input(msg) -> dict:
