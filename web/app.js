@@ -9,10 +9,15 @@ const App = (() => {
     u0.searchParams.delete("k"); history.replaceState({}, "", u0.pathname + u0.hash); }
   let token = localStorage.getItem("lucid_token") || "";
 
-  // theme
+  // theme (system → dark → light) + live status-bar color
+  const metaTheme=document.querySelector('meta[name="theme-color"]');
+  const PAPER={light:"#faf9f5",dark:"#211d1b"};
   const applyTheme = () => { const t = localStorage.getItem("lucid_theme");
-    if (t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme"); };
+    if (t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme");
+    const dark = t==="dark" || (!t && matchMedia("(prefers-color-scheme:dark)").matches);
+    if (metaTheme) metaTheme.setAttribute("content", dark?PAPER.dark:PAPER.light); };
   applyTheme();
+  matchMedia("(prefers-color-scheme:dark)").addEventListener?.("change",()=>{ if(!localStorage.getItem("lucid_theme")) applyTheme(); });
   document.getElementById("themeBtn").onclick = () => {
     const cur = localStorage.getItem("lucid_theme");
     const next = cur === "dark" ? "light" : cur === "light" ? "" : "dark";
@@ -112,6 +117,7 @@ const App = (() => {
   const stageColor=(c)=>{ const s=(c.stage||"").toLowerCase();
     if (c.is_client) return "var(--pos)";
     if (s.includes("refus")||s.includes("ghost")) return "var(--ten)";
+    if (c.bucket==="business") return "var(--neu)";
     return "var(--accent)"; };
   function crmDay(iso){ if(!iso) return ""; const d=new Date(iso); return isNaN(d)?"":d.toLocaleDateString(undefined,{month:"short",day:"numeric"}); }
   const crmInitials=(c)=>{ const p=(c.company||c.name||"?").trim().split(/\s+/);
@@ -129,18 +135,35 @@ const App = (() => {
   function crmCard(c){
     const col=stageColor(c);
     const owe=(c.action==="reply"||c.action==="follow_up");
-    const meta=[c.stage, c.next_meeting?("◷ "+crmDay(c.next_meeting)):"", (c.todos&&c.todos.length?("✓ "+c.todos.length):"")].filter(Boolean);
+    const meta=[ c.next_meeting?("◷ "+crmDay(c.next_meeting)):"",
+      (c.todos&&c.todos.length)?("✓ "+c.todos.length+" to-do"+(c.todos.length>1?"s":"")):"" ].filter(Boolean);
     return `<div class="rcard crmcard" data-email="${h(c.email)}" style="--mc:${col}">
       <div class="tile mono"><span>${h(crmInitials(c))}</span></div>
       <div class="rbody">
         <h3>${h(c.company||c.name)}</h3>
         <div class="snip">${h(c.name!==(c.company||c.name)?c.name+" · ":"")}${h(c.summary||"")}</div>
         <div class="rmeta">
-          ${owe?`<span class="chip owe">${h(c.situation||"Respond")}</span>`:""}
+          ${owe?`<span class="chip owe">${h(c.situation||"Owe a reply")}</span>`:""}
+          ${owe&&c.draft?`<span class="chip draftready">✍ draft ready</span>`:""}
+          ${c.stage?`<span class="chip stage">${h(c.stage)}</span>`:""}
           ${meta.map(m=>`<span class="chip stage">${h(m)}</span>`).join("")}
           <span class="time">${rel(new Date(c.last_ts||Date.now()).toISOString())}</span>
         </div>
       </div></div>`;
+  }
+
+  function oweRow(c){
+    const col=stageColor(c);
+    return `<div class="owerow" data-email="${h(c.email)}" style="--mc:${col}">
+      <div class="ow-l">
+        <div class="ow-name">${h(c.name||c.company)}</div>
+        <div class="ow-sit">${h(c.situation||c.summary||"Needs a response from you")}</div>
+      </div>
+      <span class="ow-t">${rel(new Date(c.last_ts||Date.now()).toISOString())}</span>
+      ${c.draft
+        ? `<button class="cta solid" data-copy="${h(c.email)}">✍ Copy draft</button>`
+        : `<button class="cta line" data-open="${h(c.email)}">Reply →</button>`}
+    </div>`;
   }
 
   function paintCRM(){
@@ -148,46 +171,112 @@ const App = (() => {
     if (d.missing){ app.innerHTML=`<div class="view"><div class="hero"><h1>CRM</h1></div>
       <div class="empty"><div class="big">◌</div>No CRM export yet.
       <div class="hint">Run the orionscrm sync — it writes the roster here automatically.</div></div></div>`; return; }
-    const s=d.stats||{};
+    const all=d.contacts||[], s=d.stats||{};
+    const owe=all.filter(c=>c.action==="reply"||c.action==="follow_up")
+                 .sort((a,b)=>new Date(b.last_ts||0)-new Date(a.last_ts||0));
+    const nextMeet=all.filter(c=>c.next_meeting).length;
+    const bits=[];
+    if(owe.length) bits.push(`<b>${owe.length}</b> ${owe.length>1?"people owe":"person owes"} you a reply`);
+    if(nextMeet)   bits.push(`<b>${nextMeet}</b> meeting${nextMeet>1?"s":""} on the books`);
+    bits.push(`<b>${all.length}</b> in your book`);
+    setSubline(`${owe.length} owe a reply${nextMeet?` · ${nextMeet} upcoming`:""}`);
+
+    const figs=[
+      {n:all.length,c:"Contacts",col:"var(--ink)",f:"all"},
+      {n:s.clients||0,c:"Clients",col:"var(--pos)",f:"client"},
+      {n:s.leads||0,c:"Leads",col:"var(--accent)",f:"lead"},
+      {n:s.network||0,c:"Network",col:"var(--neu)",f:"network"},
+      {n:owe.length,c:"Owe a reply",col:"var(--accent)",scroll:true},
+    ];
+    const ribbon=figs.map(f=>`<button class="statcard${(!f.scroll&&crmFilter===f.f)?" on":""}"
+      ${f.scroll?`data-scroll="owelane"`:`data-f="${f.f}"`} style="--mc:${f.col}">
+      <span class="figure">${f.n}</span><span class="figcap">${f.c}</span></button>`).join("");
+
+    const oweHTML=owe.length?`<div class="owelane" id="owelane">
+      <div class="lanehead">Owe a reply <span class="n">${owe.length}</span></div>
+      ${owe.map(oweRow).join("")}</div>`:"";
+
     const groups=crmFilter==="all"?CRM_GROUPS:CRM_GROUPS.filter(g=>g.k===crmFilter);
     const sections=groups.map(g=>{
-      const list=(d.contacts||[]).filter(g.test);
+      const list=all.filter(g.test);
       if(!list.length) return "";
       return `<div class="daygroup crm-group"><div class="daylabel">${g.label}<span class="n">${list.length}</span></div>
         <div class="feed">${list.map(crmCard).join("")}</div></div>`;
     }).join("");
+
     const chips=[{k:"all",l:"All"},{k:"client",l:`Clients ${s.clients||0}`},{k:"lead",l:`Leads ${s.leads||0}`},{k:"network",l:`Network ${s.network||0}`}]
       .map(f=>`<button class="fchip ${crmFilter===f.k?"on":""}" data-f="${f.k}">${f.l}</button>`).join("");
-    app.innerHTML=`<div class="view">
-      <div class="hero"><div class="greeting">Your book of business</div>
-        <h1>CRM <span class="count">${(d.contacts||[]).length} contacts</span></h1>
-        <div class="stats"><span><b>${s.clients||0}</b> clients</span>
-          <span><span class="stat-dot" style="background:var(--accent)"></span><b>${s.leads||0}</b> leads</span>
-          <span><b>${s.network||0}</b> network</span></div></div>
+
+    app.innerHTML=`<div class="view crm-board">
+      <div class="hero">
+        <div class="dateline">${datelineStr()}</div>
+        <h1>CRM <span class="count">${all.length} contacts</span></h1>
+        <div class="ednote">Your book of business, fresh this morning — ${bits.join(" · ")}.</div>
+      </div>
+      <div class="figrow">${ribbon}</div>
+      ${oweHTML}
       <div class="filterbar">${chips}</div>
       ${sections||`<div class="empty"><div class="big">◌</div>Nothing in this view.</div>`}</div>`;
+
+    app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
+    const sc=app.querySelector('.statcard[data-scroll]');
+    if(sc) sc.onclick=()=>{const el=document.getElementById("owelane"); if(el) el.scrollIntoView({behavior:"smooth",block:"start"});};
     app.querySelectorAll(".filterbar .fchip").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
     app.querySelectorAll(".crmcard").forEach(c=>c.onclick=()=>go("/crm/"+encodeURIComponent(c.dataset.email)));
+    app.querySelectorAll(".owerow").forEach(r=>r.onclick=()=>go("/crm/"+encodeURIComponent(r.dataset.email)));
+    app.querySelectorAll(".owerow .cta[data-open]").forEach(b=>b.onclick=(e)=>{e.stopPropagation();go("/crm/"+encodeURIComponent(b.dataset.open));});
+    app.querySelectorAll(".owerow .cta[data-copy]").forEach(b=>b.onclick=(e)=>{
+      e.stopPropagation();
+      const c=all.find(x=>x.email===b.dataset.copy);
+      if(c&&c.draft) navigator.clipboard.writeText(c.draft).then(()=>toast("Draft copied"));
+    });
   }
 
   function showCRMContact(email){
     const c=((crmData||{}).contacts||[]).find(x=>x.email===email);
     if(!c){ go("/crm"); return; }
     const col=stageColor(c);
-    const draft=c.draft?`<div class="panel"><h2>Suggested ${c.draft_kind==="follow_up"?"follow-up":"reply"}</h2>
-      <div class="draftbox">${h(c.draft)}</div>
-      <div class="btnrow" style="margin-top:12px"><button class="btn ghost" id="copyDraft">Copy draft</button></div></div>`:"";
+    setSubline(c.name||"CRM");
+
+    const ghost=/(refus|ghost)/.test((c.stage||"").toLowerCase());
+    const step=c.is_client?3:(c.bucket==="business"?1:2);
+    const segs=[1,2,3].map(i=>{
+      const on=i<=step, sc=(ghost&&i===step)?"var(--ten)":col;
+      return `<span style="flex:1;background:${on?sc:"var(--sink)"}"></span>`;
+    }).join("");
+    const steps=["Network","Lead","Client"].map((l,i)=>`<span class="${i<step?"on":""}">${l}</span>`).join("");
+    const stagePanel=`<div class="panel"><h2>Stage</h2>
+      <div class="dmeta" style="margin-bottom:9px"><span class="mc" style="font-weight:650;text-transform:capitalize">${h(c.stage||"—")}</span>
+        ${c.next_meeting?`<span>&middot; next ◷ ${h(crmDay(c.next_meeting))}</span>`:""}</div>
+      <div class="stagebar"><div class="vbar">${segs}</div><div class="stagesteps">${steps}</div></div></div>`;
+
     const todos=(c.todos&&c.todos.length)?`<div class="panel"><h2>To-dos from your meetings</h2>
       <ul class="kvlist">${c.todos.map(t=>`<li>${h(t)}</li>`).join("")}</ul></div>`:"";
+
+    const draft=c.draft?`<div class="panel"><h2>Suggested ${c.draft_kind==="follow_up"?"follow-up":"reply"}</h2>
+      <div class="qcard letter">
+        <div class="qtext">${h(c.draft)}</div>
+        <div class="qmeta">
+          <span class="qspk">Draft${c.name||c.company?` · to ${h(c.name||c.company)}`:""}</span>
+          <button class="cta solid" id="copyDraft">✍ Copy</button>
+        </div></div></div>`:"";
+
     const tl=(c.timeline||[]).slice().reverse().map(t=>{
-      const link=t.link?`<a href="${h(t.link)}" target="_blank" rel="noopener">open ↗</a>`:"";
-      return `<li style="--tlc:${tlColor(t)}">
-        <span class="tldate">${h(t.date)}</span>
-        <div class="tlhead"><span class="tlmark">${tlMark(t)}</span><b>${h(t.subject||"(no subject)")}</b>${link}</div>
-        ${t.summary?`<div class="tlsum">${h(t.summary)}</div>`:""}</li>`;
+      const tc=tlColor(t);
+      const link=t.link?`<a class="topen" href="${h(t.link)}" target="_blank" rel="noopener">open ↗</a>`:"";
+      return `<div class="tinter">
+        <div class="tdate" style="--tlc:${tc}">${h(t.date)}</div>
+        <div class="tcard" style="--tlc:${tc}">
+          <div class="thead"><span class="tmark">${tlMark(t)}</span><b>${h(t.subject||"(no subject)")}</b>${link}</div>
+          ${t.summary?`<div class="tsum">${h(t.summary)}</div>`:""}
+        </div></div>`;
     }).join("");
+    const tlPanel=`<div class="panel"><h2>Timeline</h2>
+      <div class="timeline-people crmtl">${tl||`<div class="muted" style="font-size:14px">No history yet.</div>`}</div></div>`;
+
     const links=[c.notion_url?`<a class="btn ghost" href="${h(c.notion_url)}" target="_blank" rel="noopener">Open in Notion ↗</a>`:""].filter(Boolean).join("");
-    app.innerHTML=`<div class="view detail" style="--mc:${col}">
+
+    app.innerHTML=`<div class="view detail crm-dossier view--wide" style="--mc:${col}">
       <span class="backlink" onclick="history.back()">&larr; CRM</span>
       <div class="dhero">${ringHTML(col,100,h(crmInitials(c)))}
         <div><h1>${h(c.name)}</h1>
@@ -197,8 +286,10 @@ const App = (() => {
             <span>&middot; ${h(c.email)}</span></div></div></div>
       ${c.summary?`<p class="lead">${h(c.summary)}</p>`:""}
       ${links?`<div class="btnrow" style="margin:12px 0 4px">${links}</div>`:""}
-      ${draft}${todos}
-      <div class="panel"><h2>Timeline</h2><ul class="crmtl">${tl||"<li>No history yet.</li>"}</ul></div>
+      <div class="dossier">
+        <div class="dcol">${stagePanel}${todos}</div>
+        <div class="dcol">${draft}${tlPanel}</div>
+      </div>
     </div>`;
     const cp=document.getElementById("copyDraft");
     if(cp) cp.onclick=()=>{ navigator.clipboard.writeText(c.draft||"").then(()=>toast("Draft copied")); };
@@ -218,14 +309,14 @@ const App = (() => {
     {k:"tense",label:"Tense",test:r=>mood(r).k==="tense",dot:"var(--ten)"},
   ];
 
-  async function showHome(){
+  async function showNotes(){
     if (!cache.length) app.innerHTML=`<div class="view"><div class="hero"><h1>…</h1></div>${skeletons()}</div>`;
-    let recs; try { recs=await api("/api/recordings"); } catch(e){ return authOrError(e,showHome); }
-    cache=recs; paintHome();
-    if (recs.some(r=>!["done","error"].includes(r.status))) pollTimer=setTimeout(showHome,4000);
+    let recs; try { recs=await api("/api/recordings"); } catch(e){ return authOrError(e,showNotes); }
+    cache=recs; paintNotes();
+    if (recs.some(r=>!["done","error"].includes(r.status))) pollTimer=setTimeout(showNotes,4000);
   }
 
-  function paintHome(){
+  function paintNotes(){
     const recs=cache;
     const done=recs.filter(r=>r.status==="done");
     const mins=Math.round(done.reduce((a,r)=>a+(r.duration||0),0)/60);
@@ -272,8 +363,8 @@ const App = (() => {
         </div>
       </div>${filterbar}${body}</div>`;
     bindCards();
-    app.querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintHome(); });
-    const ss=document.getElementById("sortSel"); if(ss) ss.onchange=()=>{ homeSort=ss.value; paintHome(); };
+    app.querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
+    const ss=document.getElementById("sortSel"); if(ss) ss.onchange=()=>{ homeSort=ss.value; paintNotes(); };
   }
 
   function cardHTML(r){
@@ -292,6 +383,163 @@ const App = (() => {
         </div></div></div>`;
   }
   const bindCards=()=>app.querySelectorAll(".rcard").forEach(c=>c.onclick=()=>go("/r/"+c.dataset.id));
+
+  // ===== HOME — "THE BRIEF" (command center, routed at "/") =====
+  let brief=null, _briefFns=[];
+  const actAttr=(fn)=>{ _briefFns.push(fn); return `data-bf="${_briefFns.length-1}"`; };
+  const bindBrief=()=>app.querySelectorAll("[data-bf]").forEach(el=>{
+    el.onclick=(e)=>{ e.stopPropagation(); const f=_briefFns[+el.dataset.bf]; if(f) f(e); }; });
+  const crmOwe=(c)=>(c.action==="reply"||c.action==="follow_up");
+  const copyDraft=(text)=>()=>navigator.clipboard.writeText(text||"")
+    .then(()=>toast("Draft copied")).catch(()=>toast("Copy failed"));
+  function evTime(d){ const t=new Date(), same=d.toDateString()===t.toDateString(), hm=d.getHours()||d.getMinutes();
+    if(same) return hm?d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}):"TODAY";
+    return d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})
+      +(hm?" · "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}):""); }
+
+  async function showHome(){
+    setTab("home");
+    if (!brief) app.innerHTML=`<div class="view view--wide brief">${masthead({title:"The Brief",wide:true})}
+      <div class="figrow">${Array(6).fill('<div class="statcard"><span class="figure">·</span></div>').join("")}</div>
+      ${skeletons(2)}</div>`;
+    let recs; try { recs=await api("/api/recordings"); } catch(e){ return authOrError(e,showHome); }
+    cache=recs;
+    const grab=(p)=>api(p).then(r=>r).catch(()=>null);
+    const [ppl,vens,crm,tasks,cal]=await Promise.all([
+      grab("/api/people"), grab("/api/ventures"), grab("/api/crm/board"),
+      grab("/api/data/action-items"), grab("/api/cal/status")]);
+    brief={ recs, ppl:ppl||[], vens:vens||[],
+      crm:(crm&&!crm.missing)?crm:(crm||{contacts:[],stats:{}}),
+      tasks:(tasks&&tasks.action_items)||[], cal:cal||{} };
+    crmData=brief.crm;                       // so Brief→/crm/:email deep links resolve
+    paintBrief();
+    if (recs.some(r=>!["done","error"].includes(r.status))) pollTimer=setTimeout(showHome,5000);
+  }
+
+  function needsYou(b){
+    const out=[];
+    (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{ const d=!!c.draft;
+      out.push({ domain:stageColor(c), mark:"✍", sort:d?0:1,
+        kind:d?"Draft ready":(c.action==="follow_up"?"Follow up":"Reply"),
+        title:c.name||c.company||c.email, sub:c.situation||c.summary||"",
+        cta:d?"Copy draft":"Open", copy:d?c.draft:"", go:()=>go("/crm/"+encodeURIComponent(c.email)) }); });
+    (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense").slice(0,4).forEach(r=>{
+      out.push({ domain:"var(--ten)", mark:"⚠", sort:2, kind:"Tense note",
+        title:r.headline||"Conversation", sub:r.summary||"", cta:"Review", go:()=>go("/r/"+r.id) }); });
+    (b.vens||[]).filter(v=>!v.has_spec).slice(0,3).forEach(v=>{
+      out.push({ domain:"var(--topic)", mark:"◆", sort:3, kind:"Idea",
+        title:v.title, sub:v.summary||"No build plan yet", cta:"Generate plan",
+        go:()=>go("/ventures/"+encodeURIComponent(v.id)) }); });
+    (b.tasks||[]).slice(0,6).forEach(t=>{
+      out.push({ domain:"var(--pos)", mark:"☑", sort:4, kind:"To-do", title:t.text,
+        sub:[t.owner?("— "+t.owner):"", t.due?("due "+t.due):"", t.note_headline].filter(Boolean).join(" · "),
+        cta:"Open", go:()=>go("/r/"+t.note_id) }); });
+    return out.sort((a,c)=>a.sort-c.sort);
+  }
+  function figures(b){
+    const done=b.recs.filter(r=>r.status==="done"), s=b.crm.stats||{};
+    const mins=Math.round(done.reduce((a,r)=>a+(r.duration||0),0)/60);
+    return [
+      {n:b.recs.length, cap:"Notes",        domain:"var(--ink)",      go:()=>go("/notes")},
+      {n:b.ppl.length,  cap:"People",        domain:"var(--accent)",   go:()=>go("/people")},
+      {n:b.tasks.length,cap:"Open to-dos",   domain:"var(--pos)",      go:()=>go("/notes")},
+      {n:s.leads||0,    cap:"Leads",         domain:"var(--accent)",   go:()=>go("/crm")},
+      {n:s.clients||0,  cap:"Clients",       domain:"var(--pos)",      go:()=>go("/crm")},
+      {n:mins,          cap:"Min captured",  domain:"var(--decision)", go:()=>go("/notes")} ];
+  }
+  function agenda(b){ const now=Date.now();
+    return (b.crm.contacts||[]).filter(c=>c.next_meeting).map(c=>({
+        when:new Date(c.next_meeting), name:c.company||c.name, who:c.name,
+        domain:stageColor(c), go:()=>go("/crm/"+encodeURIComponent(c.email)) }))
+      .filter(e=>!isNaN(e.when) && e.when.getTime()>=now-12*3600*1000)
+      .sort((a,c)=>a.when-c.when).slice(0,6); }
+
+  function paintBrief(){
+    _briefFns=[];
+    const b=brief, done=b.recs.filter(r=>r.status==="done"), s=b.crm.stats||{};
+    const hr=new Date().getHours();
+    const greet=hr<12?"Good morning":hr<18?"Good afternoon":"Good evening";
+    const who=(b.crm.owner_name||"").split(/\s+/)[0];
+    const items=needsYou(b), up=agenda(b);
+    const owe=(b.crm.contacts||[]).filter(crmOwe).length;
+    const mtgs=up.filter(e=>e.when.toDateString()===new Date().toDateString()).length;
+
+    const bits=[];
+    if(owe)  bits.push(`<b>${owe}</b> ${owe>1?"people owe":"person owes"} you a reply`);
+    if(mtgs) bits.push(`<b>${mtgs}</b> meeting${mtgs>1?"s":""} today`);
+    if(b.tasks.length) bits.push(`<b>${b.tasks.length}</b> open to-do${b.tasks.length>1?"s":""}`);
+    const ed=bits.length?bits.join(" · "):"You're all caught up. Nothing needs you right now.";
+    setSubline(bits.length?[owe&&owe+" need you", mtgs&&mtgs+" today", b.tasks.length&&b.tasks.length+" to-dos"]
+        .filter(Boolean).join(" · "):"all clear");
+
+    const ribbon=figures(b).map(f=>`<div class="statcard" style="--domain:${f.domain}" ${actAttr(f.go)}>
+        <span class="figure">${f.n}</span><span class="figcap">${h(f.cap)}</span></div>`).join("");
+
+    const queue=items.length ? items.slice(0,8).map(it=>`<div class="qrow" style="--domain:${it.domain}" ${actAttr(it.go)}>
+        <span class="qmark">${it.mark}</span>
+        <div class="qmain"><div class="qkind">${h(it.kind)}</div>
+          <div class="qtitle">${h(it.title)}</div>${it.sub?`<div class="qsub">${h(it.sub)}</div>`:""}</div>
+        ${it.copy?`<button class="qcta solid" ${actAttr(copyDraft(it.copy))}>${h(it.cta)}</button>`
+                 :`<button class="qcta" ${actAttr(it.go)}>${h(it.cta)}</button>`}</div>`).join("")
+      : `<div class="allclear"><b>Clear desk.</b> No replies owed, no tense notes, every idea has a plan.</div>`;
+
+    const todayRail = up.length
+      ? `<div class="todayrail">${up.map(e=>`<div class="evpill" style="--domain:${e.domain}" ${actAttr(e.go)}>
+            <div class="evt">${h(evTime(e.when))}</div><div class="evname">${h(e.name)}</div>
+            ${e.who&&e.who!==e.name?`<div class="evwho">${h(e.who)}</div>`:""}</div>`).join("")}</div>`
+      : `<div class="railnote">${b.cal.connected?"No meetings on the calendar today."
+            :"Upcoming meetings from your CRM appear here. Connect a calendar in Settings for the full agenda."}</div>`;
+
+    const w=n=>(100*n/((s.clients||0)+(s.leads||0)+(s.network||0)||1)).toFixed(1)+"%";
+    const pipeline=`<div class="vbar"><span style="width:${w(s.clients||0)};background:var(--pos)"></span>
+        <span style="width:${w(s.leads||0)};background:var(--accent)"></span>
+        <span style="width:${w(s.network||0)};background:var(--neu)"></span></div>
+      <div class="vkey"><span><i style="background:var(--pos)"></i>${s.clients||0} clients</span>
+        <span><i style="background:var(--accent)"></i>${s.leads||0} leads</span>
+        <span><i style="background:var(--neu)"></i>${s.network||0} network</span></div>
+      ${owe?`<div class="minirow" style="--domain:var(--accent)" ${actAttr(()=>go("/crm"))}>
+        <span class="spinedot"></span><div class="mtxt"><div class="mt1">${owe} awaiting your reply</div>
+        <div class="mt2">Top of your CRM queue</div></div><span class="mtime">→</span></div>`:""}`;
+
+    const empty=(t)=>`<div class="mt2" style="padding:8px 0">${t}</div>`;
+    const latest=done.slice(0,3).map(r=>{ const m=mood(r);
+      return `<div class="minirow" style="--domain:${m.c}" ${actAttr(()=>go("/r/"+r.id))}>
+        <span class="spinedot"></span><div class="mtxt">
+          <div class="mt1">${h(r.headline||"Untitled")}</div>
+          <div class="mt2">${h(r.summary||m.w)}</div></div>
+        <span class="mtime">${h(rel(r.created_at))}</span></div>`; }).join("")||empty("No notes yet.");
+
+    const nurture=[...b.ppl].sort((a,c)=>{ const ac=a.trend==="cooling"?0:1, cc=c.trend==="cooling"?0:1;
+        return ac!==cc?ac-cc:new Date(a.last_seen||0)-new Date(c.last_seen||0); })
+      .slice(0,3).map(p=>`<div class="minirow" style="--domain:var(--${toneClass(p.tone)})" ${actAttr(()=>go("/people/"+encodeURIComponent(p.key)))}>
+        <span class="spinedot"></span><div class="mtxt"><div class="mt1">${h(p.name)}</div>
+        <div class="mt2">${trendWord(p.trend)} · ${p.interactions} talk${p.interactions>1?"s":""}</div></div>
+        <span class="mtime">${h(rel(p.last_seen))}</span></div>`).join("")||empty("No people yet.");
+
+    const ideas=b.vens.slice(0,3).map(v=>`<div class="minirow" style="--domain:var(--topic)" ${actAttr(()=>go("/ventures/"+encodeURIComponent(v.id)))}>
+        <span class="spinedot"></span><div class="mtxt"><div class="mt1">${h(v.title)}</div>
+        <div class="mt2">${v.has_spec?"Plan ready":"No plan yet"}${v.status?(" · "+h(v.status)):""}</div></div>
+        ${v.has_spec?`<span class="mtime">✓</span>`:""}</div>`).join("")||empty("No ideas yet.");
+
+    app.innerHTML=`<div class="view view--wide brief">
+      ${masthead({title:`${greet}${who?(", "+h(who)):""}.`, note:ed, wide:true})}
+      <div class="figrow">${ribbon}</div>
+      <div class="deck">
+        <div class="panel sp-7"><h2>Needs you${items.length?`<span class="hcount">${items.length}</span>`:""}</h2>
+          <div class="queue">${queue}</div></div>
+        <div class="sp-5 railcol">
+          <div class="panel"><h2>Today</h2>${todayRail}</div>
+          <div class="panel"><h2>Pipeline</h2>${pipeline}</div>
+        </div>
+        <div class="panel sp-4"><h2>Latest notes</h2>${latest}
+          <span class="seeall" ${actAttr(()=>go("/notes"))}>All notes →</span></div>
+        <div class="panel sp-4"><h2>People to nurture</h2>${nurture}
+          <span class="seeall" ${actAttr(()=>go("/people"))}>All people →</span></div>
+        <div class="panel sp-4"><h2>Ideas in motion</h2>${ideas}
+          <span class="seeall" ${actAttr(()=>go("/ventures"))}>All ideas →</span></div>
+      </div></div>`;
+    bindBrief();
+  }
 
   // ===== SEARCH =====
   async function showSearch(){
@@ -687,26 +935,26 @@ const App = (() => {
     audioURL = URL.createObjectURL(blob); audioURLId = id; return audioURL;
   }
   async function showDetail(id){
-    app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/')">← Home</span>${skeletons(1)}
+    app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/notes')">← Notes</span>${skeletons(1)}
       <div style="height:12px"></div>${skeletons(2)}</div>`;
     let rec; try { rec=await api("/api/recordings/"+id); } catch(e){ return authOrError(e,()=>showDetail(id)); }
     current=rec; activeTab="overview"; showOriginal=false; chatHist=[];
 
     if (!["done","error"].includes(rec.status)){
-      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/')">← Home</span>
+      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/notes')">← Notes</span>
         <div class="empty"><span class="spin-lg"></span>${h(rec.status)}…
         <div class="hint">transcribe → translate → analyze</div></div></div>`;
       pollTimer=setTimeout(()=>showDetail(id),3500); return;
     }
     if (rec.status==="error"){
-      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/')">← Home</span>
+      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/notes')">← Notes</span>
         <div class="panel"><h2>Error</h2><p style="color:var(--ten);white-space:pre-wrap;font-size:13px">${h(rec.error)}</p>
         <button class="btn" onclick="App.reanalyze('${id}')">Retry</button></div></div>`; return;
     }
 
     const a=rec.analysis||{}; const m=mood(a);
     app.innerHTML=`<div class="view" style="--mc:${m.c}">
-      <span class="backlink" onclick="App.go('/')">← Home</span>
+      <span class="backlink" onclick="App.go('/notes')">← Notes</span>
       <div class="dhero">${ringHTML(m.c,72)}
         <div><h1>${h(a.headline||"Recording")}</h1>
           <div class="dmeta"><span class="mc">${m.w}</span><span>· ${fmt(rec.duration)}</span>
@@ -1387,7 +1635,7 @@ const App = (() => {
     } catch(e){ toast("Rename failed"); }
   }
   async function del(id){ if(!confirm("Delete this recording?"))return;
-    try{ await api(`/api/recordings/${id}`,{method:"DELETE"}); cache=[]; go("/"); }catch(e){toast("Failed");} }
+    try{ await api(`/api/recordings/${id}`,{method:"DELETE"}); cache=[]; go("/notes"); }catch(e){toast("Failed");} }
 
   function authOrError(e,retry){
     if (String(e.message)==="auth"){ return showLogin(retry); }
