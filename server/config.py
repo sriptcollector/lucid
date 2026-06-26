@@ -50,7 +50,8 @@ class Settings(BaseSettings):
     whisper_tag_nonspeech: bool = True
     # speaker identification (local, no tokens)
     voiceid_enabled: bool = True
-    voiceid_threshold: float = 0.72
+    voiceid_threshold: float = 0.70     # min cosine sim to accept an enrolled voice
+    voiceid_margin: float = 0.06        # top match must beat 2nd-best by this much
     openai_api_key: str = ""
     deepgram_api_key: str = ""
 
@@ -80,6 +81,10 @@ class Settings(BaseSettings):
     crm_backend: str = "notion"             # notion (only backend for now)
     crm_database_id: str = ""               # the shared Notion "clients" database
     owner_name: str = ""                    # the recorder ('I'/narrator) for solo notes
+
+    # --- Calendar matching (read-only): a secret iCal/ICS URL (no OAuth) ---
+    cal_enabled: bool = False
+    cal_window_hours: float = 4.0           # match events within +/- this of a recording
 
     # --- Delivery: Telegram (fully optional, off by default) ---
     telegram_enabled: bool = False
@@ -306,6 +311,27 @@ class Settings(BaseSettings):
     @property
     def crm_connected(self) -> bool:
         return bool(self.get_notion_token()) and bool(self.crm_database_id)
+
+    # ------------------------------------------------------------------ #
+    # Calendar secret iCal URL (lives in config.json under "cal_ics_url")
+    # ------------------------------------------------------------------ #
+    def get_cal_ics_url(self) -> str:
+        u = self._runtime.get("cal_ics_url")
+        return u if isinstance(u, str) else ""
+
+    def set_cal_ics_url(self, url: str) -> None:
+        self.save_config({"cal_ics_url": url})
+
+    def clear_cal_ics_url(self) -> None:
+        self.save_config({"cal_ics_url": None})
+
+    @property
+    def cal_connected(self) -> bool:
+        return bool(self.get_cal_ics_url())
+
+    @property
+    def cal_events_path(self) -> Path:
+        return self.data_path / "calendar_events.json"
 
     # ------------------------------------------------------------------ #
     # Data API key — read-only programmatic access to Lucid's data.

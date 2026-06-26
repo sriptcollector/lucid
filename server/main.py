@@ -389,6 +389,7 @@ def get_settings() -> dict:
         "telegram_chat_known": _telegram_chat_known(),
         "owner_name": settings.owner_name,
         "crm_connected": settings.crm_connected,
+        "cal_connected": settings.cal_connected,
     }
 
 
@@ -492,6 +493,55 @@ async def crm_refresh() -> dict:
         raise HTTPException(400, "Not connected to Notion.")
     count = await asyncio.to_thread(notion_crm.refresh_contacts)
     return {"ok": True, "contact_count": count}
+
+
+# --------------------------------------------------------------------------- #
+# Calendar matching (read-only iCal URL)
+# --------------------------------------------------------------------------- #
+def _cal_status() -> dict:
+    from .integrations import calendar_ics
+    return {
+        "connected": settings.cal_connected,
+        "event_count": len(calendar_ics.load_events()),
+        "last_refresh": calendar_ics.last_refresh(),
+    }
+
+
+@app.get("/api/cal/status", dependencies=[Depends(auth)])
+def cal_status() -> dict:
+    return _cal_status()
+
+
+@app.post("/api/cal/connect", dependencies=[Depends(auth)])
+async def cal_connect(request: Request) -> dict:
+    from .integrations import calendar_ics
+    body = await request.json()
+    url = (body.get("url") or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(400, "Paste the secret iCal URL (it starts with https://).")
+    settings.set_cal_ics_url(url)
+    ok, msg, count = await asyncio.to_thread(calendar_ics.test_and_describe)
+    if not ok:
+        raise HTTPException(400, f"Couldn't read that calendar — {msg}")
+    settings.save_config({"cal_enabled": True})
+    count = await asyncio.to_thread(calendar_ics.refresh_events)
+    return {"ok": True, "event_count": count, "status": _cal_status()}
+
+
+@app.delete("/api/cal/connect", dependencies=[Depends(auth)])
+def cal_disconnect() -> dict:
+    settings.clear_cal_ics_url()
+    settings.save_config({"cal_enabled": False})
+    return {"ok": True}
+
+
+@app.post("/api/cal/refresh", dependencies=[Depends(auth)])
+async def cal_refresh() -> dict:
+    from .integrations import calendar_ics
+    if not settings.cal_connected:
+        raise HTTPException(400, "No calendar connected.")
+    count = await asyncio.to_thread(calendar_ics.refresh_events)
+    return {"ok": True, "event_count": count}
 
 
 # --------------------------------------------------------------------------- #

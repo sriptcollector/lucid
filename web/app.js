@@ -1020,10 +1020,11 @@ const App = (() => {
   // ===== SETTINGS =====
   async function showSettings(){
     app.innerHTML=`<div class="view"><div class="hero"><h1>Settings</h1></div>${skeletons(2)}</div>`;
-    let st={}, sys={systems:[]}, crm={}, dk={}, vp={enrolled:[]};
+    let st={}, sys={systems:[]}, crm={}, cal={}, dk={}, vp={enrolled:[]};
     try { st=await api("/api/settings"); } catch(e){ return authOrError(e,showSettings); }
     try { sys=await api("/api/systems"); } catch(e){}
     try { crm=await api("/api/crm/status"); } catch(e){}
+    try { cal=await api("/api/cal/status"); } catch(e){}
     try { dk=await api("/api/data/key"); } catch(e){}
     try { vp=await api("/api/voiceprints"); } catch(e){}
     const url=st.public_url||"";
@@ -1054,6 +1055,23 @@ const App = (() => {
         <div class="field"><label>Clients database link</label><input id="crmDb" placeholder="https://www.notion.so/…" autocomplete="off"></div>
         <div class="btnrow" style="margin-top:6px"><button class="btn" id="crmConnect">Connect Notion</button></div>
         <div id="crmMsg" style="font-size:13px;color:var(--muted);margin-top:10px"></div>
+      </div>`;
+
+    const calSync = cal.last_refresh ? new Date(cal.last_refresh*1000).toLocaleString() : "never";
+    const calPanel = cal.connected ? `
+      <div class="panel"><h2>Calendar matching</h2>
+        <div class="kv"><span class="k">Connection</span><span class="v ok">Connected · ${cal.event_count||0} events</span></div>
+        <div class="kv"><span class="k">Last synced</span><span class="v">${h(calSync)}</span></div>
+        <p style="color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.5">For each recording, Lucid finds the meeting at that time and uses its attendees' real names + topic for accurate notes. Read-only.</p>
+        <div class="btnrow" style="margin-top:14px">
+          <button class="btn" id="calSyncBtn">Sync calendar now</button>
+          <button class="btn ghost" id="calDisc">Disconnect</button></div>
+      </div>` : `
+      <div class="panel"><h2>Calendar matching</h2>
+        <p style="color:var(--muted);font-size:14px;margin:0 0 12px;line-height:1.55">Paste your calendar's <b>secret iCal address</b> so Lucid can match a recording to the meeting at that time and use the real attendee names + topic. In Google Calendar → calendar <b>Settings</b> → <b>Integrate calendar</b> → copy <b>Secret address in iCal format</b>. No login needed — read-only.</p>
+        <div class="field"><label>Secret iCal URL</label><input id="calUrl" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" autocomplete="off"></div>
+        <div class="btnrow" style="margin-top:6px"><button class="btn" id="calConnect">Connect calendar</button></div>
+        <div id="calMsg" style="font-size:13px;color:var(--muted);margin-top:10px"></div>
       </div>`;
 
     const enrolled = (vp.enrolled||[]);
@@ -1095,6 +1113,7 @@ const App = (() => {
         <div class="btnrow" style="margin-top:14px"><a class="btn ghost" href="/setup">Re-run setup</a>${st.telegram_connected&&st.telegram_chat_known?`<button class="btn ghost" id="tgSend">📲 Send link to my phone</button>`:""}</div>
       </div>
       ${crmPanel}
+      ${calPanel}
       ${ownerPanel}
       ${apiPanel}
       <div class="panel"><h2>Appearance</h2>
@@ -1129,6 +1148,20 @@ const App = (() => {
       cs.disabled=false; cs.textContent="Sync clients now"; };
     const cd=byId("crmDisc"); if(cd) cd.onclick=async()=>{ if(!confirm("Disconnect Notion? Your client data stays in Notion."))return;
       try{ await api("/api/crm/connect",{method:"DELETE"}); toast("Disconnected"); showSettings(); }catch(e){ toast("Failed"); } };
+
+    // --- Calendar matching (iCal, read-only) ---
+    const calc=byId("calConnect"); if(calc) calc.onclick=async()=>{
+      const url=byId("calUrl").value.trim(), msg=byId("calMsg");
+      if(!url){ msg.textContent="Paste your secret iCal URL."; return; }
+      calc.disabled=true; calc.textContent="Connecting…"; msg.textContent="";
+      try{ const r=await api("/api/cal/connect",{method:"POST",headers:jh,body:JSON.stringify({url})});
+        toast(`Connected · ${r.event_count} events`); showSettings();
+      }catch(e){ msg.textContent=errText(e); calc.disabled=false; calc.textContent="Connect calendar"; } };
+    const calsb=byId("calSyncBtn"); if(calsb) calsb.onclick=async()=>{ calsb.disabled=true; calsb.textContent="Syncing…";
+      try{ const r=await api("/api/cal/refresh",{method:"POST"}); toast(`Synced · ${r.event_count} events`); }catch(e){ toast(errText(e)); }
+      calsb.disabled=false; calsb.textContent="Sync calendar now"; };
+    const cald=byId("calDisc"); if(cald) cald.onclick=async()=>{ if(!confirm("Disconnect this calendar?"))return;
+      try{ await api("/api/cal/connect",{method:"DELETE"}); toast("Disconnected"); showSettings(); }catch(e){ toast("Failed"); } };
 
     // --- Your identity + voice enrollment ---
     const os=byId("ownerSave"); if(os) os.onclick=async()=>{

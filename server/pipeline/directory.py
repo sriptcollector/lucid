@@ -160,11 +160,12 @@ def _learn_voice(rec, names: list[str], ent: dict) -> None:
         avg = emb if not prev else (np.array(prev) * n + emb) / (n + 1)
         ent["voiceprint"] = np.asarray(avg, dtype=float).tolist()
         ent["voice_n"] = n + 1
-        # push to voice-ID so future recordings auto-recognise this person
-        with voiceid._lock:
-            vp = voiceid._load()
-            vp[ent["name"]] = ent["voiceprint"]
-            voiceid._save(vp)
+        # add this recording's embedding as a fresh reference so the voice-ID
+        # profile grows richer (and more accurate) the more this person speaks.
+        try:
+            voiceid.add_reference(ent["name"], emb)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -265,7 +266,9 @@ def record_correction(src: str, dst: str, rec=None) -> None:
             from . import voiceid
             vp = voiceid._load()
             if src in vp:
-                vp[dst] = vp.pop(src)
+                merged = voiceid._as_vecs(vp.get(dst, [])) + voiceid._as_vecs(vp.pop(src))
+                if merged:
+                    vp[dst] = merged[-voiceid._MAX_REFS:]
                 voiceid._save(vp)
         except Exception:
             pass

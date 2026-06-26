@@ -304,7 +304,7 @@ def analyze(rec: Recording) -> Analysis:
 
     duration = f"{rec.duration:.0f}s" if rec.duration else "unknown"
     user_msg = (
-        _known_context()
+        _known_context(rec)
         + f"Recording duration: {duration}. Language: {rec.language or 'unknown'}.\n"
         + f"Number of segments: {len(rec.segments)}.\n\n"
         + f"TRANSCRIPT:\n{transcript}"
@@ -325,13 +325,14 @@ def analyze(rec: Recording) -> Analysis:
     return _to_analysis(data)
 
 
-def _known_context() -> str:
+def _known_context(rec) -> str:
     """A short, uncached preamble that anchors names to the truth: who the
-    recorder is (so solo voice notes get the owner's name right) and the real
-    client names (so the AI uses the correct spelling instead of guessing).
+    recorder is (so solo voice notes get the owner's name right), the real
+    client names, and — when this recording lines up with a calendar event —
+    that meeting's attendees and what it was about.
 
     Lives in the user message, NOT the cached system prompt, so prompt caching
-    still hits across recordings even as the roster changes.
+    still hits across recordings even as this context changes.
     """
     lines: list[str] = []
     try:
@@ -344,22 +345,38 @@ def _known_context() -> str:
             f"is {owner}. Attribute their words to {owner} and use this exact "
             f"spelling for their name."
         )
-    names: list[str] = []
+
+    # Calendar event around this recording's time: real attendees + topic.
+    try:
+        from ..integrations import calendar_ics
+        cal_names, cal_ctx = calendar_ics.context_for(getattr(rec, "created_at", "") or "")
+    except Exception:
+        cal_names, cal_ctx = [], ""
+    if cal_ctx:
+        lines.append(
+            "- CALENDAR — this recording lines up with a calendar event: "
+            + cal_ctx + ". The people present are most likely those attendees; "
+            "prefer these exact name spellings."
+        )
+
+    # Known client names from Notion.
     try:
         from ..integrations import notion_crm
-        names = notion_crm.roster_names()
+        client_names = notion_crm.roster_names()
     except Exception:
-        names = []
-    if names:
+        client_names = []
+
+    known = list(dict.fromkeys([*cal_names, *client_names]))
+    if known:
         lines.append(
-            "- KNOWN CLIENTS — when a spoken name clearly refers to one of these "
-            "people, use this EXACT spelling (don't invent a different spelling): "
-            + ", ".join(names) + "."
+            "- KNOWN PEOPLE — when a spoken name clearly refers to one of these, "
+            "use this EXACT spelling (don't invent a different one): "
+            + ", ".join(known[:500]) + "."
         )
     if not lines:
         return ""
     return (
-        "KNOWN CONTEXT (authoritative — use it to get names right):\n"
+        "KNOWN CONTEXT (authoritative — use it to get names and topic right):\n"
         + "\n".join(lines)
         + "\n\n"
     )
