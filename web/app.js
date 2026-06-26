@@ -74,6 +74,8 @@ const App = (() => {
     if (p==="/ventures"){ setTab("ventures"); return showVentures(); }
     if (p==="/search"){ setTab("search"); return showSearch(); }
     if (p==="/settings"){ setTab("settings"); return showSettings(); }
+    const cm=p.match(/^\/crm\/(.+)$/);
+    if (cm){ setTab("crm"); return showCRMContact(decodeURIComponent(cm[1])); }
     if (p==="/crm"){ setTab("crm"); return showCRM(); }
     setTab("home"); return showHome(); }
 
@@ -89,9 +91,13 @@ const App = (() => {
     if (s.includes("refus")||s.includes("ghost")) return "var(--ten)";
     return "var(--accent)"; };
   function crmDay(iso){ if(!iso) return ""; const d=new Date(iso); return isNaN(d)?"":d.toLocaleDateString(undefined,{month:"short",day:"numeric"}); }
+  const crmInitials=(c)=>{ const p=(c.company||c.name||"?").trim().split(/\s+/);
+    return (((p[0]||"")[0]||"")+((p[1]||"")[0]||"")).toUpperCase(); };
+  const tlColor=(t)=> t.lucid?"var(--pos)":t.kind==="meeting"?"var(--decision)":t.kind==="sms"?"var(--neu)":t.direction==="out"?"var(--accent)":"var(--question)";
+  const tlMark =(t)=> t.lucid?"∿":t.kind==="meeting"?"◷":t.kind==="sms"?"○":t.direction==="out"?"↗":"↙";
 
   async function showCRM(){
-    app.innerHTML=`<div class="view"><div class="hero"><h1>CRM…</h1></div>${skeletons(3)}</div>`;
+    app.innerHTML=`<div class="view"><div class="hero"><div class="skhero shimmer"></div></div>${skeletons(3)}</div>`;
     let d; try { d=await api("/api/crm/board"); } catch(e){ return authOrError(e,showCRM); }
     crmData=d; document.getElementById("subline").textContent="CRM";
     paintCRM();
@@ -100,15 +106,15 @@ const App = (() => {
   function crmCard(c){
     const col=stageColor(c);
     const owe=(c.action==="reply"||c.action==="follow_up");
-    const meta=[c.stage, c.next_meeting?("📅 "+crmDay(c.next_meeting)):"", (c.todos&&c.todos.length?("✅ "+c.todos.length):"")].filter(Boolean);
+    const meta=[c.stage, c.next_meeting?("◷ "+crmDay(c.next_meeting)):"", (c.todos&&c.todos.length?("✓ "+c.todos.length):"")].filter(Boolean);
     return `<div class="rcard crmcard" data-email="${h(c.email)}" style="--mc:${col}">
-      <div class="tile" style="background:${col}"></div>
+      <div class="tile mono"><span>${h(crmInitials(c))}</span></div>
       <div class="rbody">
         <h3>${h(c.company||c.name)}</h3>
         <div class="snip">${h(c.name!==(c.company||c.name)?c.name+" · ":"")}${h(c.summary||"")}</div>
         <div class="rmeta">
-          ${owe?`<span class="chip" style="background:${col};color:#fff">${h(c.situation_icon)} ${h(c.situation||"Respond")}</span>`:""}
-          ${meta.map(m=>`<span class="chip">${h(m)}</span>`).join("")}
+          ${owe?`<span class="chip owe">${h(c.situation||"Respond")}</span>`:""}
+          ${meta.map(m=>`<span class="chip stage">${h(m)}</span>`).join("")}
           <span class="time">${rel(new Date(c.last_ts||Date.now()).toISOString())}</span>
         </div>
       </div></div>`;
@@ -124,7 +130,7 @@ const App = (() => {
     const sections=groups.map(g=>{
       const list=(d.contacts||[]).filter(g.test);
       if(!list.length) return "";
-      return `<div class="daygroup"><div class="daylabel">${g.label} · ${list.length}</div>
+      return `<div class="daygroup crm-group"><div class="daylabel">${g.label}<span class="n">${list.length}</span></div>
         <div class="feed">${list.map(crmCard).join("")}</div></div>`;
     }).join("");
     const chips=[{k:"all",l:"All"},{k:"client",l:`Clients ${s.clients||0}`},{k:"lead",l:`Leads ${s.leads||0}`},{k:"network",l:`Network ${s.network||0}`}]
@@ -133,40 +139,43 @@ const App = (() => {
       <div class="hero"><div class="greeting">Your book of business</div>
         <h1>CRM <span class="count">${(d.contacts||[]).length} contacts</span></h1>
         <div class="stats"><span><b>${s.clients||0}</b> clients</span>
-          <span><span class="stat-dot"></span><b>${s.leads||0}</b> leads</span>
+          <span><span class="stat-dot" style="background:var(--accent)"></span><b>${s.leads||0}</b> leads</span>
           <span><b>${s.network||0}</b> network</span></div></div>
       <div class="filterbar">${chips}</div>
       ${sections||`<div class="empty"><div class="big">◌</div>Nothing in this view.</div>`}</div>`;
     app.querySelectorAll(".filterbar .fchip").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
-    app.querySelectorAll(".crmcard").forEach(c=>c.onclick=()=>showCRMContact(c.dataset.email));
+    app.querySelectorAll(".crmcard").forEach(c=>c.onclick=()=>go("/crm/"+encodeURIComponent(c.dataset.email)));
   }
 
   function showCRMContact(email){
     const c=((crmData||{}).contacts||[]).find(x=>x.email===email);
     if(!c){ go("/crm"); return; }
     const col=stageColor(c);
-    const draft=c.draft?`<div class="panel"><h2>✍️ Suggested ${c.draft_kind==="follow_up"?"follow-up":"reply"}</h2>
+    const draft=c.draft?`<div class="panel"><h2>Suggested ${c.draft_kind==="follow_up"?"follow-up":"reply"}</h2>
       <div class="draftbox">${h(c.draft)}</div>
-      <div class="row"><button class="btn ghost" id="copyDraft">Copy draft</button></div></div>`:"";
-    const todos=(c.todos&&c.todos.length)?`<div class="panel"><h2>✅ To-dos from your meetings</h2>
+      <div class="btnrow" style="margin-top:12px"><button class="btn ghost" id="copyDraft">Copy draft</button></div></div>`:"";
+    const todos=(c.todos&&c.todos.length)?`<div class="panel"><h2>To-dos from your meetings</h2>
       <ul class="kvlist">${c.todos.map(t=>`<li>${h(t)}</li>`).join("")}</ul></div>`:"";
     const tl=(c.timeline||[]).slice().reverse().map(t=>{
-      const icon=t.lucid?"🎙️":(t.kind==="meeting"?"📅":(t.kind==="sms"?"💬":(t.direction==="out"?"↗":"↙")));
-      const link=t.link?` <a href="${h(t.link)}" target="_blank" rel="noopener">open ↗</a>`:"";
-      return `<li><span class="tldate">${h(t.date)}</span> <b>${icon} ${h(t.subject||"(no subject)")}</b>${link}<div class="tlsum">${h(t.summary||"")}</div></li>`;
+      const link=t.link?`<a href="${h(t.link)}" target="_blank" rel="noopener">open ↗</a>`:"";
+      return `<li style="--tlc:${tlColor(t)}">
+        <span class="tldate">${h(t.date)}</span>
+        <div class="tlhead"><span class="tlmark">${tlMark(t)}</span><b>${h(t.subject||"(no subject)")}</b>${link}</div>
+        ${t.summary?`<div class="tlsum">${h(t.summary)}</div>`:""}</li>`;
     }).join("");
     const links=[c.notion_url?`<a class="btn ghost" href="${h(c.notion_url)}" target="_blank" rel="noopener">Open in Notion ↗</a>`:""].filter(Boolean).join("");
-    app.innerHTML=`<div class="view detail">
-      <button class="back" onclick="history.back()">← CRM</button>
-      <div class="hero"><div class="greeting">${h(c.company||"")}</div>
-        <h1>${h(c.name)}</h1>
-        <div class="stats"><span class="chip" style="background:${col};color:#fff">${h(c.stage)}</span>
-          ${c.next_meeting?`<span class="chip">📅 ${h(crmDay(c.next_meeting))}</span>`:""}
-          <span class="chip">${h(c.email)}</span></div>
-        <p class="lead">${h(c.summary||"")}</p>
-        <div class="row">${links}</div></div>
+    app.innerHTML=`<div class="view detail" style="--mc:${col}">
+      <span class="backlink" onclick="history.back()">&larr; CRM</span>
+      <div class="dhero">${ringHTML(col,100,h(crmInitials(c)))}
+        <div><h1>${h(c.name)}</h1>
+          <div class="dmeta"><span class="mc">${h(c.stage)}</span>
+            ${c.company?`<span>&middot; ${h(c.company)}</span>`:""}
+            ${c.next_meeting?`<span>&middot; ◷ ${h(crmDay(c.next_meeting))}</span>`:""}
+            <span>&middot; ${h(c.email)}</span></div></div></div>
+      ${c.summary?`<p class="lead">${h(c.summary)}</p>`:""}
+      ${links?`<div class="btnrow" style="margin:12px 0 4px">${links}</div>`:""}
       ${draft}${todos}
-      <div class="panel"><h2>🧵 Timeline</h2><ul class="crmtl">${tl||"<li>No history yet.</li>"}</ul></div>
+      <div class="panel"><h2>Timeline</h2><ul class="crmtl">${tl||"<li>No history yet.</li>"}</ul></div>
     </div>`;
     const cp=document.getElementById("copyDraft");
     if(cp) cp.onclick=()=>{ navigator.clipboard.writeText(c.draft||"").then(()=>toast("Draft copied")); };
