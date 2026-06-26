@@ -75,7 +75,7 @@ const App = (() => {
       ${note?`<div class="ednote">${note}</div>`:""}</div>`;
 
   // routing
-  let cache=[], pollTimer=null;
+  let cache=[], pollTimer=null, __navPaint=true;
   let homeFilter="all", homeSort="newest";
   const clearPoll=()=>{ if(pollTimer){clearTimeout(pollTimer); pollTimer=null;} };
   const setTab=(n)=>{
@@ -87,7 +87,7 @@ const App = (() => {
   document.querySelectorAll(".tabbar button").forEach(b=>b.onclick=()=>go(b.dataset.tab==="home"?"/":"/"+b.dataset.tab));
   document.querySelectorAll(".appbar [data-nav]").forEach(b=>b.onclick=()=>go("/"+b.dataset.nav));
 
-  function route(){ clearPoll(); window.scrollTo(0,0); const p=location.pathname;
+  function route(){ clearPoll(); __navPaint=true; window.scrollTo(0,0); const p=location.pathname;
     const m=p.match(/^\/r\/([\w-]+)/);
     if (m){ setTab("notes"); return showDetail(m[1]); }
     const pm=p.match(/^\/people\/(.+)$/);
@@ -106,6 +106,10 @@ const App = (() => {
     if (cm){ setTab("crm"); return showCRMContact(decodeURIComponent(cm[1])); }
     if (p==="/crm"){ setTab("crm"); return showCRM(); }
     setTab("home"); return showHome(); }
+
+  // first paint after a route animates; poll/filter repaints don't
+  function paintDone(){ const _v=app.querySelector('.view');
+    if(__navPaint){ __navPaint=false; } else if(_v){ _v.classList.add('is-repaint'); } }
 
   // ===== CRM (orionscrm roster: clients / leads / network) =====
   let crmData=null, crmFilter="all";
@@ -217,6 +221,7 @@ const App = (() => {
       ${oweHTML}
       <div class="filterbar">${chips}</div>
       ${sections||`<div class="empty"><div class="big">◌</div>Nothing in this view.</div>`}</div>`;
+    paintDone();
 
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
     const sc=app.querySelector('.statcard[data-scroll]');
@@ -362,6 +367,7 @@ const App = (() => {
           ${tense?`<span><span class="stat-dot"></span><b>${tense}</b> tense</span>`:""}
         </div>
       </div>${filterbar}${body}</div>`;
+    paintDone();
     bindCards();
     app.querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
     const ss=document.getElementById("sortSel"); if(ss) ss.onchange=()=>{ homeSort=ss.value; paintNotes(); };
@@ -521,6 +527,7 @@ const App = (() => {
         <div class="mt2">${v.has_spec?"Plan ready":"No plan yet"}${v.status?(" · "+h(v.status)):""}</div></div>
         ${v.has_spec?`<span class="mtime">✓</span>`:""}</div>`).join("")||empty("No ideas yet.");
 
+    const _railX = app.querySelector('.todayrail')?.scrollLeft || 0;
     app.innerHTML=`<div class="view view--wide brief">
       ${masthead({title:`${greet}${who?(", "+h(who)):""}.`, note:ed, wide:true})}
       <div class="figrow">${ribbon}</div>
@@ -538,6 +545,8 @@ const App = (() => {
         <div class="panel sp-4"><h2>Ideas in motion</h2>${ideas}
           <span class="seeall" ${actAttr(()=>go("/ventures"))}>All ideas →</span></div>
       </div></div>`;
+    paintDone();
+    const _r = app.querySelector('.todayrail'); if(_r && _railX) _r.scrollLeft=_railX;
     bindBrief();
   }
 
@@ -1354,8 +1363,22 @@ const App = (() => {
     const close = () => { sheet.remove(); document.body.style.overflow=""; try{proofAudio&&proofAudio.pause();}catch(e){} };
     sheet.querySelector(".sheet-bg").onclick = close;
     sheet.querySelector(".sheet-close").onclick = close;
+    attachSheetDrag(sheet.querySelector(".sheet"), close);
     sheet.querySelectorAll("[data-proof]").forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); proof(parseFloat(el.dataset.proof), el.dataset.qt); });
     requestAnimationFrame(()=>sheet.classList.add("open"));
+  }
+
+  // drag the sheet (or its grab handle) down to dismiss — translateY follows the
+  // finger; release past 110px calls close(). Restores the stylesheet transition for snap-back.
+  function attachSheetDrag(s, close){
+    if(!s) return; let y0=null;
+    s.addEventListener('touchstart',e=>{ if(s.scrollTop>0){ y0=null; return; }
+      y0=e.touches[0].clientY; s.style.transition='none'; },{passive:true});
+    s.addEventListener('touchmove',e=>{ if(y0==null) return;
+      const dy=Math.max(0,e.touches[0].clientY-y0); s.style.transform='translateY('+dy+'px)'; },{passive:true});
+    s.addEventListener('touchend',e=>{ if(y0==null) return;
+      const dy=e.changedTouches[0].clientY-y0; s.style.transition=''; s.style.transform='';
+      if(dy>110) close(); y0=null; });
   }
 
   // ---- AI assistant: explains with playable quote-proof, can edit names ----
@@ -1383,6 +1406,7 @@ const App = (() => {
     document.body.appendChild(wrap); document.body.style.overflow="hidden";
     const close=()=>{ wrap.remove(); document.body.style.overflow=""; try{proofAudio&&proofAudio.pause();}catch(e){} };
     wrap.querySelector(".sheet-bg").onclick=close; wrap.querySelector(".sheet-close").onclick=close;
+    attachSheetDrag(wrap.querySelector(".sheet"), close);
     const box=wrap.querySelector("#chatmsgs"), input=wrap.querySelector("#chatin"), send=wrap.querySelector("#csend");
     renderChatMsgs(box);
     const doSend=async()=>{
