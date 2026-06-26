@@ -75,11 +75,10 @@ class Settings(BaseSettings):
     plaud_poll_interval: int = 300          # seconds between cloud checks
     plaud_process_backlog: bool = False     # on first run, process ALL existing
 
-    # --- Client manager (CRM): Notion (optional, off until connected) ---
+    # --- Client directory (read-only): Notion (optional, off until connected) ---
     crm_enabled: bool = False
     crm_backend: str = "notion"             # notion (only backend for now)
     crm_database_id: str = ""               # the shared Notion "clients" database
-    crm_autopush: bool = True               # append note summaries to client pages
     owner_name: str = ""                    # the recorder ('I'/narrator) for solo notes
 
     # --- Delivery: Telegram (fully optional, off by default) ---
@@ -307,6 +306,21 @@ class Settings(BaseSettings):
     @property
     def crm_connected(self) -> bool:
         return bool(self.get_notion_token()) and bool(self.crm_database_id)
+
+    # ------------------------------------------------------------------ #
+    # Data API key — read-only programmatic access to Lucid's data.
+    # Separate from the app login token so it can be handed to code/agents
+    # without granting full app access. Lives in config.json.
+    # ------------------------------------------------------------------ #
+    def get_data_api_key(self) -> str:
+        k = self._runtime.get("data_api_key")
+        return k if isinstance(k, str) else ""
+
+    def set_data_api_key(self, key: str) -> None:
+        self.save_config({"data_api_key": key})
+
+    def clear_data_api_key(self) -> None:
+        self.save_config({"data_api_key": None})
 
     # ------------------------------------------------------------------ #
     # App-password store (PBKDF2 hash in config.json; never the plaintext)

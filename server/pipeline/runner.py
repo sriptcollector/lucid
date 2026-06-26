@@ -72,13 +72,6 @@ def process(rec_id: str) -> None:
         except Exception:
             pass
 
-        # 3c) Client manager: link people to CRM clients + log the note back.
-        try:
-            from ..integrations import notion_crm
-            notion_crm.link_and_push(rec)
-        except Exception:
-            pass
-
         # 4) Notify
         telegram.notify_done(rec)
 

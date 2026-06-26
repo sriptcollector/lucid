@@ -24,6 +24,7 @@ Setup / account:
 from __future__ import annotations
 
 import asyncio
+import secrets
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -404,13 +405,11 @@ async def update_settings(request: Request) -> dict:
     body = await request.json()
     allowed = {
         "analysis_model", "translate_to", "plaud_poll_interval",
-        "tunnel_enabled", "whisper_model", "owner_name", "crm_autopush",
+        "tunnel_enabled", "whisper_model", "owner_name",
     }
     updates = {k: v for k, v in body.items() if k in allowed}
     if "owner_name" in updates:
         updates["owner_name"] = str(updates["owner_name"] or "").strip()[:80]
-    if "crm_autopush" in updates:
-        updates["crm_autopush"] = bool(updates["crm_autopush"])
     # Validate the few values that could break the pipeline if mistyped.
     if "whisper_model" in updates and updates["whisper_model"] not in \
             {"tiny", "base", "small", "medium", "large-v3"}:
@@ -438,10 +437,8 @@ def _crm_status() -> dict:
         "enabled": settings.crm_enabled,
         "database_id": settings.crm_database_id,
         "owner_name": settings.owner_name,
-        "autopush": settings.crm_autopush,
         "contact_count": len(notion_crm.load_contacts()),
         "last_refresh": notion_crm.last_refresh(),
-        "pending": len(notion_crm.list_pending()),
     }
 
 
@@ -497,25 +494,142 @@ async def crm_refresh() -> dict:
     return {"ok": True, "contact_count": count}
 
 
-@app.get("/api/crm/pending", dependencies=[Depends(auth)])
-def crm_pending() -> list:
-    from .integrations import notion_crm
-    return notion_crm.list_pending()
+# --------------------------------------------------------------------------- #
+# Data API — read-only programmatic access to Lucid's data for external code.
+# Authenticated by a dedicated data key (X-API-Key / Bearer / ?key=), separate
+# from the app login token. The owner manages the key from Settings.
+# --------------------------------------------------------------------------- #
+_ALL = 1_000_000  # "give me everything" — far above any real note count
 
 
-@app.post("/api/crm/pending/resolve", dependencies=[Depends(auth)])
-async def crm_resolve(request: Request) -> dict:
-    from .integrations import notion_crm
-    body = await request.json()
-    ok = await asyncio.to_thread(
-        notion_crm.resolve_pending,
-        (body.get("rec_id") or "").strip(),
-        (body.get("person") or "").strip(),
-        bool(body.get("confirm")),
-        (body.get("page_id") or "").strip() or None,
+def data_auth(request: Request) -> None:
+    """Allow the read API through with the data key OR a normal app token."""
+    key = settings.get_data_api_key()
+    tokens = settings.tokens
+    if not key and not tokens:
+        return  # not yet configured (loopback-only at that point)
+    authz = request.headers.get("authorization", "")
+    bearer = authz.split(" ", 1)[1].strip() if authz.startswith("Bearer ") else ""
+    provided = (
+        request.headers.get("x-api-key", "").strip()
+        or bearer
+        or request.query_params.get("key", "").strip()
     )
-    if not ok:
-        raise HTTPException(404, "No such pending match.")
+    if (key and provided == key) or (provided and provided in tokens):
+        return
+    raise HTTPException(401, "Invalid or missing API key")
+
+
+def _note_link(rec_id: str) -> str:
+    base = settings.stable_public_url or settings.current_public_url()
+    return f"{base.rstrip('/')}/r/{rec_id}" if base else ""
+
+
+def _note_data(rec, full: bool) -> dict:
+    a = rec.analysis
+    out = {
+        "id": rec.id,
+        "created_at": rec.created_at,
+        "source": rec.source,
+        "status": rec.status.value,
+        "duration": rec.duration,
+        "language": rec.language,
+        "headline": a.headline if a else None,
+        "summary": a.summary if a else None,
+        "sentiment": a.sentiment if a else None,
+        "people": [{"name": p.name or p.label, "role": p.role} for p in a.people] if a else [],
+        "key_points": a.key_points if a else [],
+        "action_items": [ai.model_dump() for ai in a.action_items] if a else [],
+        "link": _note_link(rec.id),
+    }
+    if full and a:
+        out.update({
+            "ideas": [i.model_dump() for i in a.ideas],
+            "plans": [p.model_dump() for p in a.plans],
+            "commitments": [c.model_dump() for c in a.commitments],
+            "notable_quotes": [q.model_dump() for q in a.notable_quotes],
+            "topics": [t.model_dump() for t in a.topics],
+            "timeline": [e.model_dump() for e in a.timeline],
+            "relationship_dynamics": [r.model_dump() for r in a.relationship_dynamics],
+        })
+    return out
+
+
+@app.get("/api/data", dependencies=[Depends(data_auth)])
+def data_index() -> dict:
+    return {
+        "lucid_data_api": "1",
+        "endpoints": {
+            "notes": "/api/data/notes?limit=&offset=&since=YYYY-MM-DD&full=true",
+            "note": "/api/data/notes/{id}",
+            "people": "/api/data/people",
+            "action_items": "/api/data/action-items",
+        },
+        "auth": "Send the data key as 'X-API-Key: <key>', 'Authorization: Bearer <key>', or '?key='.",
+        "counts": {
+            "notes": len(storage.list_recordings(limit=_ALL)),
+            "people": len(directory.list_directory()),
+        },
+    }
+
+
+@app.get("/api/data/notes", dependencies=[Depends(data_auth)])
+def data_notes(limit: int = 50, offset: int = 0, since: str = "", full: bool = False) -> JSONResponse:
+    recs = storage.list_recordings(limit=_ALL)
+    if since:
+        recs = [r for r in recs if (r.created_at or "") >= since]
+    total = len(recs)
+    offset = max(0, offset)
+    page = recs[offset: offset + max(1, min(limit, 500))]
+    return JSONResponse({
+        "total": total, "offset": offset, "count": len(page),
+        "notes": [_note_data(r, full) for r in page],
+    })
+
+
+@app.get("/api/data/notes/{rec_id}", dependencies=[Depends(data_auth)])
+def data_note(rec_id: str) -> JSONResponse:
+    rec = storage.get(rec_id)
+    if not rec:
+        raise HTTPException(404, "No such note")
+    return JSONResponse(_note_data(rec, full=True))
+
+
+@app.get("/api/data/people", dependencies=[Depends(data_auth)])
+def data_people() -> JSONResponse:
+    return JSONResponse({"people": directory.list_directory()})
+
+
+@app.get("/api/data/action-items", dependencies=[Depends(data_auth)])
+def data_action_items() -> JSONResponse:
+    out = []
+    for r in storage.list_recordings(limit=_ALL):
+        a = r.analysis
+        if not a:
+            continue
+        for ai in a.action_items:
+            item = ai.model_dump()
+            item.update({"note_id": r.id, "note_headline": a.headline, "created_at": r.created_at})
+            out.append(item)
+    return JSONResponse({"count": len(out), "action_items": out})
+
+
+# --- Data key management (owner-only; lets you hand a key to code) ---------- #
+@app.get("/api/data/key", dependencies=[Depends(auth)])
+def data_key() -> dict:
+    return {"key": settings.get_data_api_key(), "enabled": bool(settings.get_data_api_key())}
+
+
+@app.post("/api/data/key/rotate", dependencies=[Depends(auth)])
+def data_key_rotate() -> dict:
+    key = "lkd_" + secrets.token_hex(20)
+    settings.set_data_api_key(key)
+    return {"key": key}
+
+
+@app.delete("/api/data/key", dependencies=[Depends(auth)])
+def data_key_clear() -> dict:
+    settings.clear_data_api_key()
     return {"ok": True}
 
 

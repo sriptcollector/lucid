@@ -1020,11 +1020,12 @@ const App = (() => {
   // ===== SETTINGS =====
   async function showSettings(){
     app.innerHTML=`<div class="view"><div class="hero"><h1>Settings</h1></div>${skeletons(2)}</div>`;
-    let st={}, sys={systems:[]}, crm={}, pend=[];
+    let st={}, sys={systems:[]}, crm={}, dk={}, vp={enrolled:[]};
     try { st=await api("/api/settings"); } catch(e){ return authOrError(e,showSettings); }
     try { sys=await api("/api/systems"); } catch(e){}
     try { crm=await api("/api/crm/status"); } catch(e){}
-    try { pend=await api("/api/crm/pending"); } catch(e){}
+    try { dk=await api("/api/data/key"); } catch(e){}
+    try { vp=await api("/api/voiceprints"); } catch(e){}
     const url=st.public_url||"";
     const share = url ? `<div class="sharebox">
         <div class="badge"><span class="dot"></span>Your link is live</div>
@@ -1039,37 +1040,46 @@ const App = (() => {
 
     const lastSync = crm.last_refresh ? new Date(crm.last_refresh*1000).toLocaleString() : "never";
     const crmPanel = crm.connected ? `
-      <div class="panel"><h2>Client manager · Notion</h2>
+      <div class="panel"><h2>Client names · Notion</h2>
         <div class="kv"><span class="k">Connection</span><span class="v ok">Connected · ${crm.contact_count||0} clients</span></div>
         <div class="kv"><span class="k">Last synced</span><span class="v">${h(lastSync)}</span></div>
-        <div class="field" style="margin-top:12px"><label>Your name (so your own voice notes get attributed to you)</label>
-          <input id="crmOwner" placeholder="e.g. Orion Jones" value="${attr(crm.owner_name||"")}" autocomplete="off"></div>
-        <label class="kv" style="cursor:pointer"><span class="k">Auto-log notes onto client pages</span>
-          <input type="checkbox" id="crmPush" ${crm.autopush?"checked":""}></label>
+        <p style="color:var(--muted);font-size:13px;margin:10px 0 0;line-height:1.5">Lucid reads these names so it spells your clients right in notes. Read-only — it never writes anything to Notion.</p>
         <div class="btnrow" style="margin-top:14px">
           <button class="btn" id="crmSync">Sync clients now</button>
-          <button class="btn ghost" id="crmSave">Save</button>
           <button class="btn ghost" id="crmDisc">Disconnect</button></div>
       </div>` : `
-      <div class="panel"><h2>Client manager · Notion</h2>
-        <p style="color:var(--muted);font-size:14px;margin:0 0 12px;line-height:1.55">Connect your Notion client database so Lucid spells client names right and logs each conversation onto the client's page. <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener">Create an integration</a>, copy its secret, then open your clients database in Notion → <b>•••</b> → <b>Connections</b> → add your integration.</p>
+      <div class="panel"><h2>Client names · Notion</h2>
+        <p style="color:var(--muted);font-size:14px;margin:0 0 12px;line-height:1.55">Connect your Notion client database so Lucid spells client names right in your notes. <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener">Create an integration</a>, copy its secret, then open your clients database in Notion → <b>•••</b> → <b>Connections</b> → add it. Read-only — Lucid never writes to Notion.</p>
         <div class="field"><label>Notion integration secret</label><input id="crmToken" placeholder="ntn_… or secret_…" autocomplete="off"></div>
         <div class="field"><label>Clients database link</label><input id="crmDb" placeholder="https://www.notion.so/…" autocomplete="off"></div>
-        <div class="field"><label>Your name (so your own voice notes get attributed to you)</label><input id="crmOwner" placeholder="e.g. Orion Jones" value="${attr(crm.owner_name||"")}" autocomplete="off"></div>
         <div class="btnrow" style="margin-top:6px"><button class="btn" id="crmConnect">Connect Notion</button></div>
         <div id="crmMsg" style="font-size:13px;color:var(--muted);margin-top:10px"></div>
       </div>`;
 
-    const pendPanel = (pend&&pend.length) ? `
-      <div class="panel"><h2>Confirm client matches</h2>
-        <p style="color:var(--muted);font-size:13.5px;margin:0 0 12px;line-height:1.5">Lucid wasn't sure these people are clients. Link them to the right client or dismiss.</p>
-        ${pend.map(p=>`<div style="padding:10px 0;border-top:1px solid var(--line)">
-          <div style="font-weight:600">${h(p.person)} <span class="muted" style="font-weight:400;font-size:13px">· ${h(p.rec_title||"")}</span></div>
-          <div class="btnrow" style="margin-top:8px;flex-wrap:wrap;gap:8px">
-            ${(p.candidates||[]).map(c=>`<button class="btn ghost crmLink" data-rec="${attr(p.rec_id)}" data-person="${attr(p.person)}" data-page="${attr(c.id)}">Link to ${h(c.name)}</button>`).join("")}
-            <button class="btn ghost crmNo" data-rec="${attr(p.rec_id)}" data-person="${attr(p.person)}">Not a client</button>
-          </div></div>`).join("")}
-      </div>` : "";
+    const enrolled = (vp.enrolled||[]);
+    const ownerPanel = `
+      <div class="panel"><h2>Your identity · voice notes</h2>
+        <p style="color:var(--muted);font-size:14px;margin:0 0 12px;line-height:1.55">So Lucid spells your name right and attributes your own voice notes to you.</p>
+        <div class="field"><label>Your name</label><input id="crmOwner" placeholder="e.g. Orion Jones" value="${attr(crm.owner_name||"")}" autocomplete="off"></div>
+        <div class="kv"><span class="k">Voice enrolled</span><span class="v ${enrolled.length?'ok':''}">${enrolled.length?h(enrolled.join(', ')):'not yet'}</span></div>
+        <div class="btnrow" style="margin-top:12px">
+          <button class="btn ghost" id="ownerSave">Save name</button>
+          <button class="btn" id="voiceEnroll">🎙 Record my voice</button></div>
+        <div id="voiceMsg" style="font-size:13px;color:var(--muted);margin-top:10px"></div>
+      </div>`;
+
+    const baseUrl = (st.public_url||location.origin||"").replace(/\/$/,"");
+    const apiPanel = `
+      <div class="panel"><h2>Data API · for your code</h2>
+        <p style="color:var(--muted);font-size:14px;margin:0 0 12px;line-height:1.55">Give this key to any code that should read your Lucid data — notes, people, and action items — as JSON. Read-only.</p>
+        ${dk.key ? `
+        <div class="field"><label>Your API key</label>
+          <div class="linkrow"><code id="apiKey">${h(dk.key)}</code><span class="copy" id="apiCopy">Copy</span></div></div>
+        <div class="kv"><span class="k">Base URL</span><span class="v"><code>${h(baseUrl)}/api/data</code></span></div>
+        <p style="color:var(--muted);font-size:12.5px;margin:10px 0 0;line-height:1.5">Try it: <code>curl -H "X-API-Key: YOUR_KEY" ${h(baseUrl)}/api/data/notes</code></p>
+        <div class="btnrow" style="margin-top:14px"><button class="btn ghost" id="apiRotate">Regenerate</button><button class="btn ghost" id="apiRevoke">Turn off</button></div>`
+        : `<div class="btnrow"><button class="btn" id="apiGen">Generate API key</button></div>`}
+      </div>`;
 
     app.innerHTML=`<div class="view">
       <div class="hero"><h1>Settings</h1></div>
@@ -1085,7 +1095,8 @@ const App = (() => {
         <div class="btnrow" style="margin-top:14px"><a class="btn ghost" href="/setup">Re-run setup</a>${st.telegram_connected&&st.telegram_chat_known?`<button class="btn ghost" id="tgSend">📲 Send link to my phone</button>`:""}</div>
       </div>
       ${crmPanel}
-      ${pendPanel}
+      ${ownerPanel}
+      ${apiPanel}
       <div class="panel"><h2>Appearance</h2>
         <div class="field"><label>Theme</label><select id="themeSel">
           <option value="">Auto (system)</option><option value="dark">Dark</option><option value="light">Light</option></select></div></div>
@@ -1100,29 +1111,67 @@ const App = (() => {
     const ts=document.getElementById("tgSend"); if(ts) ts.onclick=async()=>{ ts.disabled=true;
       try{ const r=await api("/api/setup/telegram/test",{method:"POST"}); toast(r.sent?"Sent to your phone":"Message your bot first"); }catch(e){ toast("Failed"); } ts.disabled=false; };
 
-    // --- Client manager (Notion CRM) ---
+    // --- Client names (Notion, read-only) ---
     const byId=id=>document.getElementById(id);
+    const jh={"Content-Type":"application/json"};
     const errText=e=>{ let m=String(e&&e.message||"Failed"); try{ const j=JSON.parse(m); if(j.detail) m=j.detail; }catch(_){ } return m; };
+    const ownerVal=()=>{ const el=byId("crmOwner"); return el?el.value.trim():""; };
     const cc=byId("crmConnect"); if(cc) cc.onclick=async()=>{
-      const token=byId("crmToken").value.trim(), db=byId("crmDb").value.trim(), owner=byId("crmOwner").value.trim();
+      const token=byId("crmToken").value.trim(), db=byId("crmDb").value.trim();
       const msg=byId("crmMsg");
       if(!token||!db){ msg.textContent="Paste both the integration secret and the database link."; return; }
       cc.disabled=true; cc.textContent="Connecting…"; msg.textContent="";
-      try{ const r=await api("/api/crm/connect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,database:db,owner_name:owner})});
+      try{ const r=await api("/api/crm/connect",{method:"POST",headers:jh,body:JSON.stringify({token,database:db,owner_name:ownerVal()})});
         toast(`Connected · ${r.contact_count} clients`); showSettings();
       }catch(e){ msg.textContent=errText(e); cc.disabled=false; cc.textContent="Connect Notion"; } };
     const cs=byId("crmSync"); if(cs) cs.onclick=async()=>{ cs.disabled=true; cs.textContent="Syncing…";
       try{ const r=await api("/api/crm/refresh",{method:"POST"}); toast(`Synced · ${r.contact_count} clients`); }catch(e){ toast(errText(e)); }
       cs.disabled=false; cs.textContent="Sync clients now"; };
-    const csv=byId("crmSave"); if(csv) csv.onclick=async()=>{ const owner=byId("crmOwner").value.trim(); const push=byId("crmPush").checked;
-      try{ await api("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({owner_name:owner,crm_autopush:push})}); toast("Saved"); }catch(e){ toast("Failed"); } };
     const cd=byId("crmDisc"); if(cd) cd.onclick=async()=>{ if(!confirm("Disconnect Notion? Your client data stays in Notion."))return;
       try{ await api("/api/crm/connect",{method:"DELETE"}); toast("Disconnected"); showSettings(); }catch(e){ toast("Failed"); } };
-    const resolve=async(b,confirm,page)=>{ b.disabled=true;
-      const payload={rec_id:b.dataset.rec,person:b.dataset.person,confirm}; if(page) payload.page_id=page;
-      try{ await api("/api/crm/pending/resolve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); toast(confirm?"Linked":"Dismissed"); showSettings(); }catch(e){ toast("Failed"); b.disabled=false; } };
-    document.querySelectorAll(".crmLink").forEach(b=>b.onclick=()=>resolve(b,true,b.dataset.page));
-    document.querySelectorAll(".crmNo").forEach(b=>b.onclick=()=>resolve(b,false,null));
+
+    // --- Your identity + voice enrollment ---
+    const os=byId("ownerSave"); if(os) os.onclick=async()=>{
+      try{ await api("/api/settings",{method:"POST",headers:jh,body:JSON.stringify({owner_name:ownerVal()})}); toast("Saved"); }catch(e){ toast("Failed"); } };
+    const ve=byId("voiceEnroll"); if(ve) ve.onclick=()=>enrollVoice(ve, byId("voiceMsg"), ownerVal());
+
+    // --- Data API key ---
+    const ag=byId("apiGen"); if(ag) ag.onclick=async()=>{ ag.disabled=true;
+      try{ await api("/api/data/key/rotate",{method:"POST"}); toast("API key created"); showSettings(); }catch(e){ toast("Failed"); ag.disabled=false; } };
+    const ar=byId("apiRotate"); if(ar) ar.onclick=async()=>{ if(!confirm("Regenerate the key? Code using the old key will stop working."))return;
+      try{ await api("/api/data/key/rotate",{method:"POST"}); toast("New key generated"); showSettings(); }catch(e){ toast("Failed"); } };
+    const av=byId("apiRevoke"); if(av) av.onclick=async()=>{ if(!confirm("Turn off the data API? Code using the key will stop working."))return;
+      try{ await api("/api/data/key",{method:"DELETE"}); toast("Data API off"); showSettings(); }catch(e){ toast("Failed"); } };
+    const ak=byId("apiCopy"); if(ak) ak.onclick=async()=>{ try{ await navigator.clipboard.writeText((byId("apiKey")||{}).textContent||""); toast("Key copied"); }catch(e){ toast("Copy failed"); } };
+  }
+
+  // Record ~30s of mic audio and enroll it as the owner's voiceprint.
+  async function enrollVoice(btn, msg, name){
+    if(!name){ if(msg) msg.textContent="Enter your name above first, then record."; return; }
+    if(!navigator.mediaDevices||!window.MediaRecorder){ if(msg) msg.textContent="This browser can't record audio."; return; }
+    if(btn.dataset.recording==="1"){ btn._stop&&btn._stop(); return; }
+    let stream;
+    try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+    catch(e){ if(msg) msg.textContent="Microphone permission denied."; return; }
+    const rec=new MediaRecorder(stream); const chunks=[]; let secs=0;
+    rec.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
+    const tick=setInterval(()=>{ secs++; if(msg) msg.textContent=`Recording… ${secs}s (tap to stop, ~30s is ideal)`; if(secs>=45) btn._stop(); },1000);
+    btn.dataset.recording="1"; btn.textContent="⏹ Stop & save";
+    btn._stop=()=>{ clearInterval(tick); try{ rec.stop(); }catch(_){}};
+    rec.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop()); btn.dataset.recording=""; btn.disabled=true; btn.textContent="Saving…";
+      if(msg) msg.textContent="Saving your voiceprint…";
+      const blob=new Blob(chunks,{type:rec.mimeType||"audio/webm"});
+      const fd=new FormData(); fd.append("file", blob, "voice.webm");
+      try{
+        const r=await fetch("/api/enroll?name="+encodeURIComponent(name),{method:"POST",headers: token?{"Authorization":"Bearer "+token}:{}, body:fd});
+        if(!r.ok) throw new Error((await r.text())||"failed");
+        toast("Voice enrolled"); showSettings();
+      }catch(e){ btn.disabled=false; btn.dataset.recording=""; btn.textContent="🎙 Record my voice";
+        let m=String(e.message||"Failed"); try{ const j=JSON.parse(m); if(j.detail) m=j.detail; }catch(_){ }
+        if(msg) msg.textContent=m; }
+    };
+    rec.start();
   }
 
   async function reanalyze(id){ try{ await api(`/api/recordings/${id}/reanalyze`,{method:"POST"}); toast("Re-analyzing…"); showDetail(id);}catch(e){toast("Failed");} }
