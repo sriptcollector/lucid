@@ -80,16 +80,19 @@ button{font-family:inherit;color:inherit;cursor:pointer;background:none;border:n
   padding:calc(env(safe-area-inset-top) + 13px) 18px 12px;
   background:color-mix(in oklch,var(--bg) 82%,transparent);backdrop-filter:saturate(1.3) blur(14px);
   border-bottom:1px solid var(--line);}
-.brand{display:flex;align-items:center;gap:10px;}
+.brand{display:flex;align-items:center;gap:10px;flex:none;}
 .brand .rx{width:30px;height:30px;display:grid;place-items:center;background:var(--ink);color:var(--paper);
   border-radius:9px;font-family:var(--serif);font-size:20px;line-height:1;}
 .brand .wordmark{font-family:var(--serif);font-size:24px;letter-spacing:0.005em;color:var(--ink);}
-.appbar .sub{font-size:12.5px;font-weight:550;color:var(--muted);align-self:flex-end;padding-bottom:3px;}
-.appbar .grow{flex:1;}
+/* live dateline / editor's-note context line — flexes + truncates so the icons stay put */
+.appbar .sub{flex:1;min-width:0;font-size:12.5px;font-weight:550;color:var(--muted);align-self:flex-end;
+  padding-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.appbar-actions{display:flex;align-items:center;gap:8px;flex:none;}
 .iconbtn{width:38px;height:38px;border:1px solid var(--line);background:var(--card);border-radius:50%;
-  display:grid;place-items:center;font-size:16px;box-shadow:var(--sh-soft);transition:.14s;}
-.iconbtn:hover{border-color:var(--ink-soft);}
+  display:grid;place-items:center;font-size:16px;color:var(--ink-soft);box-shadow:var(--sh-soft);transition:.14s;}
+.iconbtn:hover{border-color:var(--ink-soft);color:var(--ink);}
 .iconbtn:active{transform:scale(.93);}
+.iconbtn.on{border-color:var(--ink-soft);background:color-mix(in oklch,var(--ink) 9%,var(--card));color:var(--ink);}
 
 main{max-width:var(--maxw);margin:0 auto;padding:14px 16px 48px;}
 
@@ -178,15 +181,25 @@ main{max-width:var(--maxw);margin:0 auto;padding:14px 16px 48px;}
 .empty .hint{font-size:13.5px;color:var(--muted);margin-top:8px;line-height:1.5;max-width:34ch;margin-left:auto;margin-right:auto;}
 
 /* ---------- bottom nav ---------- */
-/* floating pill nav — calm, detached (the reference look) */
+/* floating pill nav — calm, detached; 5 confident destinations + a domain under-dot */
 .tabbar{position:fixed;left:50%;transform:translateX(-50%);z-index:30;
   bottom:calc(env(safe-area-inset-bottom) + 14px);height:auto;display:flex;gap:2px;padding:7px;border-radius:999px;
+  max-width:calc(100vw - 24px);
   background:color-mix(in oklch,var(--card) 90%,transparent);backdrop-filter:saturate(1.4) blur(16px);
   box-shadow:var(--sh-card);border:1px solid color-mix(in oklch,var(--line) 60%,transparent);}
 .tabbar button{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  padding:8px 14px;border-radius:999px;font-size:10.5px;font-weight:600;color:var(--muted);transition:.14s;}
+  padding:8px 13px;border-radius:999px;font-size:10.5px;font-weight:600;color:var(--muted);transition:.14s;--dot:var(--ink);}
 .tabbar button .ic{font-size:16px;line-height:1;}
+/* status-spine under-dot: transparent (reserves space) until active, then domain-tinted */
+.tabbar button::after{content:"";width:4px;height:4px;border-radius:50%;background:transparent;margin-top:1px;transition:background .14s;}
 .tabbar button.active{color:var(--ink);background:color-mix(in oklch,var(--ink) 8%,transparent);}
+.tabbar button.active::after{background:var(--dot);}
+.tabbar button[data-tab="home"]{--dot:var(--accent);}
+.tabbar button[data-tab="notes"]{--dot:var(--ink-soft);}
+.tabbar button[data-tab="people"]{--dot:var(--accent);}
+.tabbar button[data-tab="crm"]{--dot:var(--pos);}
+.tabbar button[data-tab="ventures"]{--dot:var(--topic);}
+@media (max-width:380px){ .tabbar button{padding:8px 10px;} }
 
 /* ---------- buttons ---------- */
 .btn{height:var(--tap);padding:0 20px;border-radius:99px;background:var(--ink);color:var(--paper);
@@ -658,3 +671,48 @@ ul.crmtl a{display:inline-flex;align-items:center;gap:4px;min-height:28px;paddin
   font-size:var(--t-cap);font-weight:600;color:var(--accent-ink);
   background:color-mix(in oklch,var(--accent-soft) 50%,transparent);}
 ul.crmtl a:hover{background:var(--accent-soft);text-decoration:none;}
+
+/* ============================================================
+   BROADSHEET SHELL — view scaffolding, dateline masthead, deck grid
+   The app-shell spine: every department is a department of the same paper.
+   Owns: .view transition · .view--wide/.deck dashboard grid · the universal
+   dateline masthead (.dateline/.ednote). Reuses every existing token.
+   ============================================================ */
+:root{ --maxw-wide:1080px; }
+
+/* PAGE TRANSITION — every freshly-rendered .view fades + lifts in once.
+   Complements the existing .feed>* card stagger; global reduced-motion guard
+   (top of file) already neutralises both. */
+.view{animation:viewIn .26s var(--ease) both;}
+@keyframes viewIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){ .view{animation:none;} }
+
+/* WIDE DEPARTMENT LAYOUT — HOME "Brief" + CRM dossier breathe to ~1080px on
+   desktop, collapse to the single calm column on phone. */
+main:has(.view--wide){max-width:var(--maxw-wide);}
+
+/* THE DATELINE MASTHEAD — the universal opener (graft from Front Matter).
+   Reuses the .daylabel idiom for the tracked rule; serif headline stays .hero h1. */
+.hero .dateline{display:flex;align-items:center;gap:10px;
+  font-size:11.5px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:var(--muted);
+  font-variant-numeric:tabular-nums;margin-bottom:8px;}
+.hero .dateline::after{content:"";flex:1;height:1px;background:var(--line);}
+.hero .ednote{margin-top:9px;max-width:56ch;font-size:15px;line-height:1.5;color:var(--ink-soft);}
+.hero .ednote b{color:var(--ink);font-weight:650;}
+.hero--wide h1{font-size:calc(var(--t-display) + 0.25rem);}
+.hero--wide .ednote{font-size:15.5px;}
+
+/* THE DECK — responsive dashboard grid. One column on phone; a real 12-col
+   broadsheet grid inside a .view--wide on desktop. HOME/CRM fill it with
+   .sp-* spans; the .ribbon variant is the Figure Ribbon's auto-fit row. */
+.deck{display:grid;gap:12px;grid-template-columns:1fr;}
+.deck>*{min-width:0;}
+.deck.ribbon{grid-template-columns:repeat(auto-fit,minmax(98px,1fr));gap:8px;}
+@media (min-width:760px){
+  .view--wide .deck:not(.ribbon){grid-template-columns:repeat(12,1fr);gap:14px;}
+  .view--wide .deck:not(.ribbon)>.sp-3{grid-column:span 3;}
+  .view--wide .deck:not(.ribbon)>.sp-4{grid-column:span 4;}
+  .view--wide .deck:not(.ribbon)>.sp-6{grid-column:span 6;}
+  .view--wide .deck:not(.ribbon)>.sp-8{grid-column:span 8;}
+  .view--wide .deck:not(.ribbon)>.sp-12{grid-column:span 12;}
+}

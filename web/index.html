@@ -18,20 +18,22 @@
       <span class="rx">L</span>
       <span class="wordmark">Lucid</span>
     </div>
-    <div class="sub" id="subline">notes</div>
-    <div class="grow"></div>
-    <button class="iconbtn" id="themeBtn" title="Theme">&#9681;</button>
+    <div class="sub" id="subline">The daily brief</div>
+    <div class="appbar-actions">
+      <button class="iconbtn" id="searchBtn" data-nav="search" title="Search" aria-label="Search">&#8981;</button>
+      <button class="iconbtn" id="settingsBtn" data-nav="settings" title="Settings" aria-label="Settings">&#9881;</button>
+      <button class="iconbtn" id="themeBtn" title="Theme" aria-label="Theme">&#9681;</button>
+    </div>
   </header>
 
   <main id="app"></main>
 
   <nav class="tabbar">
-    <button data-tab="home" class="active"><span class="ic">&#9635;</span>Notes</button>
-    <button data-tab="search"><span class="ic">&#9906;</span>Search</button>
+    <button data-tab="home" class="active"><span class="ic">&#8962;</span>Today</button>
+    <button data-tab="notes"><span class="ic">&#9635;</span>Notes</button>
     <button data-tab="people"><span class="ic">&#9737;</span>People</button>
     <button data-tab="crm"><span class="ic">&#9638;</span>CRM</button>
     <button data-tab="ventures"><span class="ic">&#9671;</span>Ideas</button>
-    <button data-tab="settings"><span class="ic">&#9881;</span>Settings</button>
   </nav>
 
   <div class="toast" id="toast"></div>

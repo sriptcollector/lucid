@@ -53,18 +53,38 @@ const App = (() => {
   const ringHTML = (c,pct,glyph="∿") =>
     `<div class="ring" style="--mc:${c};--mp:${pct}%"><span class="glyph">${glyph}</span></div>`;
 
+  // ===== SHELL: dateline masthead + live subline (the Broadsheet opener) =====
+  const _MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const _DOW=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const weekNo=(d)=>{ const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+    x.setUTCDate(x.getUTCDate()+4-(x.getUTCDay()||7)); const ys=new Date(Date.UTC(x.getUTCFullYear(),0,1));
+    return Math.ceil((((x-ys)/86400000)+1)/7); };
+  const datelineStr=(d=new Date())=>`${_DOW[d.getDay()]} · ${_MON[d.getMonth()]} ${d.getDate()} · WK ${weekNo(d)}`.toUpperCase();
+  const setSubline=(t)=>{ const el=document.getElementById("subline"); if(el) el.textContent=t; };
+  // Shared masthead — every department opens with the same dateline + serif headline.
+  // title/note may contain trusted HTML (e.g. counts in <b>); greeting is plain text.
+  const masthead=({title,note="",greeting="",wide=false})=>`<div class="hero${wide?" hero--wide":""}">
+      <div class="dateline">${datelineStr()}</div>
+      ${greeting?`<div class="greeting">${h(greeting)}</div>`:""}
+      <h1>${title}</h1>
+      ${note?`<div class="ednote">${note}</div>`:""}</div>`;
+
   // routing
   let cache=[], pollTimer=null;
   let homeFilter="all", homeSort="newest";
   const clearPoll=()=>{ if(pollTimer){clearTimeout(pollTimer); pollTimer=null;} };
-  const setTab=(n)=>document.querySelectorAll(".tabbar button").forEach(b=>b.classList.toggle("active",b.dataset.tab===n));
+  const setTab=(n)=>{
+    document.querySelectorAll(".tabbar button").forEach(b=>b.classList.toggle("active",b.dataset.tab===n));
+    document.querySelectorAll(".appbar [data-nav]").forEach(b=>b.classList.toggle("on",b.dataset.nav===n));
+  };
   const go=(p)=>{ history.pushState({},"",p); route(); };
   window.onpopstate=route;
   document.querySelectorAll(".tabbar button").forEach(b=>b.onclick=()=>go(b.dataset.tab==="home"?"/":"/"+b.dataset.tab));
+  document.querySelectorAll(".appbar [data-nav]").forEach(b=>b.onclick=()=>go("/"+b.dataset.nav));
 
   function route(){ clearPoll(); window.scrollTo(0,0); const p=location.pathname;
     const m=p.match(/^\/r\/([\w-]+)/);
-    if (m){ setTab("home"); return showDetail(m[1]); }
+    if (m){ setTab("notes"); return showDetail(m[1]); }
     const pm=p.match(/^\/people\/(.+)$/);
     if (pm){ setTab("people"); return showPerson(decodeURIComponent(pm[1])); }
     if (p==="/people"){ setTab("people"); return showPeople(); }
@@ -72,6 +92,9 @@ const App = (() => {
     const vm=p.match(/^\/ventures\/(.+)$/);
     if (vm){ setTab("ventures"); return showVenture(decodeURIComponent(vm[1])); }
     if (p==="/ventures"){ setTab("ventures"); return showVentures(); }
+    // Notes = the recordings feed, moved off "/" so HOME can be the Brief.
+    // Falls back to showHome until the Notes-feed area lands showNotes().
+    if (p==="/notes"){ setTab("notes"); return (typeof showNotes==="function"?showNotes:showHome)(); }
     if (p==="/search"){ setTab("search"); return showSearch(); }
     if (p==="/settings"){ setTab("settings"); return showSettings(); }
     const cm=p.match(/^\/crm\/(.+)$/);
@@ -1392,5 +1415,5 @@ const App = (() => {
   }
 
   route();
-  return { go, reanalyze, del, rename, chat };
+  return { go, reanalyze, del, rename, chat, masthead, setSubline, datelineStr };
 })();
