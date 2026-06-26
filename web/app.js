@@ -828,15 +828,23 @@ const App = (() => {
       if(z==="reset") fit(); else zoomAt(view.clientWidth/2,view.clientHeight/2, scale*(z==="in"?1.25:0.8)); });
   }
 
+  const isUnnamedSpk = (sp) => /^speaker\s/i.test(sp||"");
   function transcriptHTML(rec){
     const segs=rec.segments||[]; const hasT=segs.some(s=>s.text_translated&&s.text_translated!==s.text);
+    // distinct speakers, in order of first appearance
+    const order=[]; const seen=new Set();
+    segs.forEach(s=>{ if(s.speaker&&!seen.has(s.speaker)){ seen.add(s.speaker); order.push(s.speaker); } });
+    const spkBar = order.length ? `<div class="spkbar">${order.map(sp=>
+        `<button class="spkchip ${isUnnamedSpk(sp)?'unnamed':'known'}" data-rename="${attr(sp)}">${isUnnamedSpk(sp)?'🎤 ':'🗣 '}${h(sp)}${isUnnamedSpk(sp)?' · name':''}</button>`).join("")}</div>
+      ${order.some(isUnnamedSpk)?`<div class="spkhint">Tap a speaker to name them — Lucid learns their voice and recognizes them automatically in future recordings.</div>`:""}` : "";
     return `<div class="panel">
+      ${spkBar}
       ${hasT?`<div class="segtoggle"><button data-lang="trans" class="${showOriginal?"":"on"}">Translated</button>
         <button data-lang="orig" class="${showOriginal?"on":""}">Original</button></div>`:""}
       <div id="transcript">${segs.map((s,i)=>{ const txt=showOriginal?s.text:(s.text_translated||s.text);
         const orig=(!showOriginal&&s.text_translated&&s.text_translated!==s.text)?`<span class="orig">${h(s.text)}</span>`:"";
         return `<div class="seg" data-i="${i}" data-start="${s.start}" data-seek="${s.start}">
-          <span class="t">${fmt(s.start)}</span>${s.speaker?`<span class="spk">${h(s.speaker)}</span>`:""}
+          <span class="t">${fmt(s.start)}</span>${s.speaker?`<span class="spk ${isUnnamedSpk(s.speaker)?'unnamed':''}" data-rename="${attr(s.speaker)}" title="Click to name this speaker">${h(s.speaker)}</span>`:""}
           <span>${h(txt)}</span>${orig}</div>`; }).join("")}</div></div>`;
   }
 
@@ -1239,13 +1247,15 @@ const App = (() => {
   }
 
   async function rename(id, from){
+    const isSpk = isUnnamedSpk(from);
     const to = await namePicker({ title:`Who is “${from}”?`,
-      sub:"Pick someone Lucid already knows, or type a name — it'll autofill next time.", value:from });
+      sub: isSpk ? "Name this voice — Lucid will recognize them by voice in future recordings."
+                 : "Pick someone Lucid already knows, or type a name — it'll autofill next time.", value: isSpk?"":from });
     if (!to || to === from) return;
     try {
       await api(`/api/recordings/${id}/rename`, { method:"POST",
         headers:{"Content-Type":"application/json"}, body: JSON.stringify({ from, to }) });
-      toast("Renamed & learned"); cache = []; showDetail(id);
+      toast(isSpk ? `Got it — learning ${to}’s voice` : "Renamed & learned"); cache = []; showDetail(id);
     } catch(e){ toast("Rename failed"); }
   }
   async function del(id){ if(!confirm("Delete this recording?"))return;
