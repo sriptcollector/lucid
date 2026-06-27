@@ -1513,3 +1513,6 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
 .notecard:hover .carddel{ opacity:1; }
 .carddel:hover{ color:var(--critical-ink); border-color:var(--critical); }
 @media (hover:none){ .carddel{ opacity:.65; width:32px; height:32px; } }
+
+/* destructive button (remove from CRM, etc.) */
+.btn.danger:hover{ border-color:var(--critical); color:var(--critical-ink); }

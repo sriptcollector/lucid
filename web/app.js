@@ -381,7 +381,11 @@ const App = (() => {
     const tlPanel=`<div class="panel"><h2>Timeline</h2>
       <div class="timeline-people crmtl">${tl||`<div class="muted" style="font-size:14px">No history yet.</div>`}</div></div>`;
 
-    const links=[c.notion_url?`<a class="btn ghost" href="${h(c.notion_url)}" target="_blank" rel="noopener">Open in Notion ↗</a>`:""].filter(Boolean).join("");
+    const links=[
+      c.notion_url?`<a class="btn ghost" href="${h(c.notion_url)}" target="_blank" rel="noopener">Open in Notion ↗</a>`:"",
+      c.is_client?"":`<button class="btn ghost" data-ov="promote">Mark as client</button>`,
+      `<button class="btn ghost danger" data-ov="remove">Remove from CRM</button>`
+    ].filter(Boolean).join("");
 
     app.innerHTML=`<div class="view detail crm-dossier view--wide" style="--mc:${col}">
       <span class="backlink" onclick="history.back()">&larr; CRM</span>
@@ -400,6 +404,12 @@ const App = (() => {
     </div>`;
     const cp=document.getElementById("copyDraft");
     if(cp) cp.onclick=()=>{ navigator.clipboard.writeText(c.draft||"").then(()=>toast("Draft copied")); };
+    app.querySelectorAll(".crm-dossier [data-ov]").forEach(b=>b.onclick=()=>{
+      const act=b.dataset.ov;
+      if(act==="remove" && !confirm(`Remove ${c.name||c.email} from your CRM?`)) return;
+      crmOverride(c.email, act);
+      go("/crm");
+    });
   }
 
   // ===== HOME =====
