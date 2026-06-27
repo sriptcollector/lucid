@@ -143,8 +143,9 @@ main{max-width:var(--maxw);margin:0 auto;padding:14px 16px 48px;}
   border:1px solid var(--line);padding:7px 12px;border-radius:99px;cursor:pointer;}
 
 .daygroup{margin-top:24px;}
-.daylabel{font-size:11.5px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:var(--muted);
-  margin:2px 2px 11px;}
+.daylabel{display:flex;align-items:center;gap:8px;
+  font-size:11.5px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:var(--muted);margin:2px 2px 11px;}
+.daylabel .n{font-size:10.5px;font-weight:700;letter-spacing:0;color:var(--muted);background:var(--sink);border-radius:999px;padding:1px 8px;}
 
 /* ---------- search ---------- */
 .searchwrap{position:relative;margin:6px 0 14px;}
@@ -199,7 +200,7 @@ main{max-width:var(--maxw);margin:0 auto;padding:14px 16px 48px;}
 .sk .c{width:84px;height:84px;border-radius:16px;flex:none;}
 .sk .l{flex:1;}
 .sk .b{height:11px;border-radius:6px;margin-bottom:9px;}
-.shimmer{background:linear-gradient(100deg,var(--sink) 30%,var(--sink-2) 50%,var(--sink) 70%);background-size:200% 100%;animation:shimmer 1.3s infinite;}
+.shimmer{background:linear-gradient(100deg,var(--surface-sunk) 25%,color-mix(in oklch,var(--surface-sunk) 55%,var(--surface-hi)) 50%,var(--surface-sunk) 75%);background-size:200% 100%;animation:shimmer 1.3s infinite;}
 @keyframes shimmer{to{background-position:-200% 0;}}
 .empty{text-align:center;color:var(--muted);padding:60px 22px;}
 .empty .big{font-size:40px;margin-bottom:14px;color:var(--faint);}
@@ -627,7 +628,7 @@ audio{width:100%;height:38px;}
 .skhero{height:30px;width:190px;border-radius:9px;margin:4px 2px 14px;}
 
 /* keyboard focus (none existed) + input rings */
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px;}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .tabbar button:focus-visible,.iconbtn:focus-visible{outline-offset:3px;}
 .rcard:focus-visible,.pcard:focus-visible,.crmcard:focus-visible,.vcard:focus-visible,
 .dircard:focus-visible{outline-offset:3px;border-radius:var(--radius);}
@@ -673,6 +674,7 @@ main:has(.view--wide){max-width:var(--maxw-wide);}
   font-size:11.5px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:var(--muted);
   font-variant-numeric:tabular-nums;margin-bottom:8px;}
 .hero .dateline::after{content:"";flex:1;height:1px;background:var(--line);}
+.hero:has(.mast-refresh) .dateline{ padding-right:42px; }
 .hero .ednote{margin-top:9px;max-width:56ch;font-size:15px;line-height:1.5;color:var(--ink-soft);}
 .hero .ednote b{color:var(--ink);font-weight:650;}
 .hero--wide h1{font-size:calc(var(--t-display) + 0.25rem);}
@@ -1051,6 +1053,8 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
 /* ---------- 7 · MOTION / PERF ---------- */
 /* gate entrance animations to REAL navigation (kills the 4-5s poll re-animate; see JS __navPaint) */
 .view.is-repaint, .view.is-repaint *{ animation:none !important; }
+/* focus-on-nav lands on the view container; never paint a ring on the programmatic target */
+.view:focus{ outline:none; }
 
 @media (max-width:760px){
   /* swap the 48px-blur card shadow for a cheaper one — rasterizes far faster */
@@ -1523,6 +1527,8 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
   font:inherit; font-size:13px; cursor:pointer; padding:6px; }
 .loginalt:hover{ color:var(--accent-ink); }
 .login-card input[inputmode="numeric"]{ letter-spacing:.3em; text-align:center; font-size:22px; }
+@keyframes shake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(2px)}30%,50%,70%{transform:translateX(-4px)}40%,60%{transform:translateX(4px)}}
+.login-card input.shake{animation:shake .4s var(--ease-inout) both;border-color:var(--critical);}
 
 /* Brief worklist: mark-as-read affordance */
 .qrow .qacts{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
@@ -1599,3 +1605,11 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
   transition:color .14s, border-color .14s, background .14s; }
 .rv-dismiss:hover{ color:var(--positive-ink); border-color:var(--positive); background:var(--surface-hi); }
 @media (hover:none){ .rv-dismiss{ width:40px; height:40px; } }
+
+/* ===== nice-to-haves: dismiss confirm beat · copy confirm · blank-note glyph ===== */
+.rv-dismiss.done,.qread.done{ background:var(--positive); border-color:var(--positive); color:var(--on-accent);
+  transform:scale(1.1); transition:transform .16s var(--ease),background .16s,color .16s; }
+.cta.solid.ok{ background:var(--positive); }
+/* blank sentiment tile on a note card gets the ∿ mark (matches detail/Brief glyph) */
+.notecard .tile::after{ display:block; content:"\223F"; position:static; width:auto; height:auto; border:none;
+  font-size:22px; line-height:1; color:color-mix(in oklch,var(--mc,var(--ink-4)) 55%,var(--ink-2)); }
