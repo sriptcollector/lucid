@@ -42,7 +42,8 @@ const App = (() => {
     b.textContent = workOnly ? "Work" : "All";
     b.classList.toggle("on", workOnly);
     b.title = workOnly ? "Showing work-relevant — tap for all" : "Showing all — tap for work-relevant";
-    b.onclick = ()=>{ workOnly=!workOnly; localStorage.setItem("lucid_all", workOnly?"0":"1"); bindWorkBtn(); route(); };
+    b.onclick = ()=>{ workOnly=!workOnly; localStorage.setItem("lucid_all", workOnly?"0":"1"); bindWorkBtn();
+      if(["/","/review","/lucid/notes"].includes(location.pathname)) route(); };
   }
 
   // helpers
@@ -79,7 +80,10 @@ const App = (() => {
     if (token) headers["Authorization"]="Bearer "+token;
     const res=await fetch(path,{...opts,headers});
     if (res.status===401||res.status===403) throw new Error("auth");
-    if (!res.ok) throw new Error((await res.text())||res.status);
+    if (!res.ok){ const ect=res.headers.get("content-type")||""; let body="";
+      try{ body=await res.text(); }catch(_){}
+      if(ect.includes("json") && body && body.length<2000) throw new Error(body);
+      throw new Error(`Server error (${res.status})`); }
     const ct=res.headers.get("content-type")||""; return ct.includes("json")?res.json():res; }
 
   // mood
@@ -117,19 +121,26 @@ const App = (() => {
     if(t){ e.preventDefault(); e.stopPropagation(); const ic=t; ic.classList.add("spinning"); refreshCurrent(); } });
 
   // routing
-  let cache=[], pollTimer=null, __navPaint=true;
+  let cache=[], pollTimer=null, __navPaint=true, _pendingScrollY=null, _scrollTarget=null;
   let homeFilter="all", homeSort="newest";
+  try{ history.scrollRestoration="manual"; }catch(_){}
   const clearPoll=()=>{ if(pollTimer){clearTimeout(pollTimer); pollTimer=null;} };
   const setTab=(n)=>{
     document.querySelectorAll(".tabbar button").forEach(b=>b.classList.toggle("active",b.dataset.tab===n));
     document.querySelectorAll(".appbar [data-nav]").forEach(b=>b.classList.toggle("on",b.dataset.nav===n));
   };
-  const go=(p)=>{ history.pushState({},"",p); route(); };
-  window.onpopstate=route;
+  const go=(p)=>{ try{ history.replaceState({...(history.state||{}), y:window.scrollY}, ""); }catch(_){}
+    _pendingScrollY=null; history.pushState({},"",p); route(); };
+  window.onpopstate=(e)=>{ _pendingScrollY=(e&&e.state&&typeof e.state.y==="number")?e.state.y:null; route(); };
   document.querySelectorAll(".tabbar button").forEach(b=>b.onclick=()=>go(b.dataset.tab==="home"?"/":"/"+b.dataset.tab));
   document.querySelectorAll(".appbar [data-nav]").forEach(b=>b.onclick=()=>go("/"+b.dataset.nav));
 
-  function route(){ clearPoll(); __navPaint=true; window.scrollTo(0,0); const p=location.pathname;
+  function route(){ clearPoll(); __navPaint=true;
+    document.querySelectorAll('.sheet-wrap,.namepick').forEach(n=>n.remove());
+    document.body.style.overflow='';
+    const _ry=_pendingScrollY; _pendingScrollY=null; _scrollTarget=null;
+    if(_ry==null) window.scrollTo(0,0); else _scrollTarget=_ry;
+    const p=location.pathname;
     // Old top-level routes fold into the Lucid hub — old links/bookmarks keep working.
     const RD={"/notes":"/lucid/notes","/people":"/lucid/people","/directory":"/lucid/directory","/ventures":"/lucid/ideas"};
     if (RD[p]){ history.replaceState({},"",RD[p]); return route(); }
@@ -158,7 +169,9 @@ const App = (() => {
 
   // first paint after a route animates; poll/filter repaints don't
   function paintDone(){ const _v=app.querySelector('.view');
-    if(__navPaint){ __navPaint=false; } else if(_v){ _v.classList.add('is-repaint'); } }
+    if(__navPaint){ __navPaint=false; } else if(_v){ _v.classList.add('is-repaint'); }
+    if(_scrollTarget!=null){ const y=_scrollTarget; _scrollTarget=null;
+      requestAnimationFrame(()=>window.scrollTo(0,y)); } }
 
   // ===== LUCID HUB — Notes · People · Ideas under one tab =====
   const LUCID_SEGS=["notes","people","ideas"];
@@ -207,17 +220,22 @@ const App = (() => {
   let _crmPoll=null;
   async function crmRefresh(manual){
     clearTimeout(_crmPoll);
-    let r; try{ r=await api("/api/crm/board/refresh",{method:"POST"}); }catch(e){ return; }
+    const stop=()=>{ const c=document.getElementById("crmRefresh"); if(c) c.classList.remove("spin"); };
+    let r; try{ r=await api("/api/crm/board/refresh",{method:"POST"}); }
+    catch(e){ if(String(e.message)==="auth") return authOrError(e,showCRM);
+      if(manual) toast("Couldn't refresh — check your connection"); return; }
     if(r && r.available===false){ if(manual) toast("orionscrm not found on this PC"); return; }
     if(manual) toast("Refreshing roster…");
     const cf=document.getElementById("crmRefresh"); if(cf) cf.classList.add("spin");
     const t0=(crmData&&crmData.generated_at)||"", started=Date.now();
     const poll=async()=>{
-      let d; try{ d=await api("/api/crm/board"); }catch(e){ return; }
+      let d; try{ d=await api("/api/crm/board"); }
+      catch(e){ stop(); if(String(e.message)==="auth") return authOrError(e,showCRM);
+        if(manual) toast("Refresh interrupted — try again"); return; }
       if(d && d.generated_at && d.generated_at!==t0){ crmData=d;
         if(manual) toast("Roster updated"); if(location.pathname==="/crm") paintCRM(); return; }
       if(Date.now()-started<150000) _crmPoll=setTimeout(poll,4000);
-      else { const c=document.getElementById("crmRefresh"); if(c) c.classList.remove("spin"); }
+      else stop();
     };
     _crmPoll=setTimeout(poll,4000);
   }
@@ -247,7 +265,7 @@ const App = (() => {
           ${owe&&c.draft?`<span class="chip draftready">✍ draft ready</span>`:""}
           ${c.stage?`<span class="chip stage">${h(c.stage)}</span>`:""}
           ${meta.map(m=>`<span class="chip stage">${h(m)}</span>`).join("")}
-          <span class="time">${rel(new Date(c.last_ts||Date.now()).toISOString())}</span>
+          <span class="time">${relTs(c.last_ts||Date.now())}</span>
         </div>
       </div></div>`;
   }
@@ -259,7 +277,7 @@ const App = (() => {
         <div class="ow-name">${h(c.name||c.company)}</div>
         <div class="ow-sit">${h(c.situation||c.summary||"Needs a response from you")}</div>
       </div>
-      <span class="ow-t">${rel(new Date(c.last_ts||Date.now()).toISOString())}</span>
+      <span class="ow-t">${relTs(c.last_ts||Date.now())}</span>
       ${c.draft
         ? `<button class="cta solid" data-copy="${h(c.email)}">✍ Copy draft</button>`
         : `<button class="cta line" data-open="${h(c.email)}">Reply →</button>`}
@@ -267,6 +285,7 @@ const App = (() => {
   }
 
   function paintCRM(){
+   try{
     const d=crmData||{contacts:[],stats:{}};
     if (d.missing){ app.innerHTML=`<div class="view"><div class="hero"><h1>CRM</h1></div>
       <div class="empty"><div class="big">◌</div>No CRM export yet.
@@ -349,6 +368,8 @@ const App = (() => {
     app.querySelectorAll(".revrow [data-ov]").forEach(b=>b.onclick=(e)=>{
       e.stopPropagation(); const row=b.closest(".revrow"); crmOverride(row.dataset.email, b.dataset.ov);
     });
+   }catch(e){ app.innerHTML=`<div class="view"><div class="empty">⚠ Couldn't render the CRM board.<br><br><button class="btn" id="crmReload">Reload</button></div></div>`;
+     const rb=document.getElementById("crmReload"); if(rb) rb.onclick=()=>showCRM(); }
   }
 
   async function crmOverride(email, action){
@@ -363,9 +384,12 @@ const App = (() => {
     if(location.pathname==="/crm") paintCRM();
   }
 
-  function showCRMContact(email){
+  async function showCRMContact(email){
+    if(!crmData){ try{ crmData=await api('/api/crm/board'); }
+      catch(e){ return authOrError(e,()=>showCRMContact(email)); } }
     const c=((crmData||{}).contacts||[]).find(x=>x.email===email);
-    if(!c){ go("/crm"); return; }
+    if(!c){ app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/crm')">← CRM</span>
+      <div class="empty"><div class="big">◌</div>Contact not found.</div></div>`; return; }
     const col=stageColor(c);
     setSubline(c.name||"CRM");
 
@@ -456,7 +480,7 @@ const App = (() => {
       <div class="figrow">${Array(4).fill('<div class="statcard"><span class="figure">·</span><span class="figcap">&nbsp;</span></div>').join("")}</div>
       ${skeletons()}</div>`;
     let recs; try { recs=await api("/api/recordings"); } catch(e){ return authOrError(e,showNotes); }
-    cache=recs; paintNotes();
+    if(_pendingDel) recs=recs.filter(r=>r.id!==_pendingDel.id); cache=recs; paintNotes();
     if (recs.some(r=>!["done","error"].includes(r.status))) pollTimer=setTimeout(showNotes,4000);
   }
 
@@ -583,14 +607,15 @@ const App = (() => {
       <div class="figrow">${Array(6).fill('<div class="statcard"><span class="figure">·</span></div>').join("")}</div>
       ${skeletons(2)}</div>`;
     let recs; try { recs=await api("/api/recordings"); } catch(e){ return authOrError(e,showHome); }
-    cache=recs;
-    const grab=(p)=>api(p).then(r=>r).catch(()=>null);
+    if(_pendingDel) recs=recs.filter(r=>r.id!==_pendingDel.id); cache=recs;
+    const failed=[];
+    const grab=(p,l)=>api(p).then(r=>r).catch(()=>{ failed.push(l); return null; });
     const [ppl,vens,crm,tasks,cal]=await Promise.all([
-      grab("/api/people"), grab("/api/ventures"), grab("/api/crm/board"),
-      grab("/api/data/action-items"), grab("/api/cal/status")]);
+      grab("/api/people","People"), grab("/api/ventures","Ideas"), grab("/api/crm/board","CRM"),
+      grab("/api/data/action-items","To-dos"), grab("/api/cal/status","Calendar")]);
     brief={ recs, ppl:ppl||[], vens:vens||[],
       crm:(crm&&!crm.missing)?crm:(crm||{contacts:[],stats:{}}),
-      tasks:(tasks&&tasks.action_items)||[], cal:cal||{} };
+      tasks:(tasks&&tasks.action_items)||[], cal:cal||{}, _failed:failed };
     crmData=brief.crm;                       // so Brief→/crm/:email deep links resolve
     paintBrief();
     if (recs.some(r=>!["done","error"].includes(r.status))) pollTimer=setTimeout(showHome,5000);
@@ -599,7 +624,7 @@ const App = (() => {
   function needsYou(b){
     const out=[], seen=briefSeen(), dt=doneTodos();
     const clear=(msg)=>{ paintBrief(); toast(msg||"Marked read"); };
-    (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{ const d=!!c.draft, id="reply:"+c.email+":"+(c.last_ts||"");
+    (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{ const d=!!c.draft, id="reply:"+c.email+":"+(Date.parse(c.last_ts)||0);
       out.push({ id, domain:stageColor(c), mark:"✍", sort:d?0:1,
         kind:d?"Draft ready":(c.action==="follow_up"?"Follow up":"Reply"),
         title:c.name||c.company||c.email, sub:c.situation||c.summary||"",
@@ -661,15 +686,19 @@ const App = (() => {
       setSubline("welcome"); bindBrief(); paintDone(); return;
     }
     const items=needsYou(b), up=agenda(b);
+    const _failed=b._failed||[];
     const openTodos=(b.tasks||[]).filter(keepAi).filter(t=>!doneTodos().has(todoId(t))).length;
-    const owe=(b.crm.contacts||[]).filter(crmOwe).length;
-    const mtgs=up.filter(e=>e.when.toDateString()===new Date().toDateString()).length;
+    const owe = items.filter(it=>it.id.startsWith("reply:")).length;
+    const today=new Date().toDateString();
+    const mtgs=(b.crm.contacts||[]).filter(c=>c.next_meeting&&new Date(c.next_meeting).toDateString()===today).length;
 
     const bits=[];
     if(owe)  bits.push(`<b>${owe}</b> ${owe>1?"people owe":"person owes"} you a reply`);
     if(mtgs) bits.push(`<b>${mtgs}</b> meeting${mtgs>1?"s":""} today`);
     if(openTodos) bits.push(`<b>${openTodos}</b> open to-do${openTodos>1?"s":""}`);
-    const ed=bits.length?bits.join(" · "):"You're all caught up. Nothing needs you right now.";
+    const ed=bits.length?bits.join(" · ")
+      :(_failed.length?`Couldn't load ${h(_failed.join(", "))} — some of your day may be missing.`
+        :"You're all caught up. Nothing needs you right now.");
     setSubline(bits.length?[owe&&owe+" need you", mtgs&&mtgs+" today", openTodos&&openTodos+" to-dos"]
         .filter(Boolean).join(" · "):"all clear");
 
@@ -726,8 +755,13 @@ const App = (() => {
         ${v.has_spec?`<span class="mtime">✓</span>`:""}</div>`).join("")||empty("No ideas yet.");
 
     const _railX = app.querySelector('.todayrail')?.scrollLeft || 0;
+    const failBanner = _failed.length ? `<div class="panel" id="briefWarn" style="display:flex;align-items:center;gap:12px;border-color:var(--ten)">
+      <span style="flex:1;font-size:14px;color:var(--ink-soft)">Couldn't load ${h(_failed.join(", "))} — some of your day may be missing.</span>
+      <button class="btn ghost" ${actAttr(()=>{ brief=null; showHome(); })}>Retry</button>
+      <button class="btn ghost" ${actAttr((e)=>{ const n=e.target.closest("#briefWarn"); if(n) n.remove(); })} aria-label="Dismiss">✕</button></div>` : "";
     app.innerHTML=`<div class="view view--wide brief">
       ${masthead({title:`${greet}${who?(", "+h(who)):""}.`, note:ed, wide:true})}
+      ${failBanner}
       <button class="reviewcta" ${actAttr(()=>go("/review"))}>
         <span class="rc-ic">◴</span>
         <span class="rc-txt"><b>The day in review</b>
@@ -765,10 +799,10 @@ const App = (() => {
 
   async function buildSearchIndex(force){
     if(searchIdx && !force) return searchIdx;
-    const grab=(p)=>api(p).then(r=>r).catch(()=>null);
-    const [recs,ppl,vens,crm]=await Promise.all([
+    const grab=(p)=>api(p).then(r=>r).catch(e=>{ if(String(e.message)==="auth") throw e; return null; });
+    let [recs,ppl,vens,crm]=await Promise.all([
       grab("/api/recordings"), grab("/api/people"), grab("/api/ventures"), grab("/api/crm/board")]);
-    if(Array.isArray(recs)) cache=recs;
+    if(Array.isArray(recs)){ if(_pendingDel) recs=recs.filter(r=>r.id!==_pendingDel.id); cache=recs; }
     if(crm && !crm.missing) crmData=crm;
     const idx=[];
     (recs||[]).forEach(r=>{ if(!r.headline && !r.summary) return;
@@ -910,7 +944,7 @@ const App = (() => {
   let _rvData=null, _rvItems=[], reviewFilter="all";
   const _lsGet=(k)=>{ try{ return JSON.parse(localStorage.getItem(k)||"[]"); }catch(_){ return []; } };
   const _lsSet=(k,a)=>{ try{ localStorage.setItem(k,JSON.stringify(a)); }catch(_){ } };
-  const todoId   =(t)=>`${t.note_id||""}::${(t.text||"").slice(0,80)}`;
+  const todoId   =(t)=>`${t.note_id||""}::${t.owner||""}::${t.due||""}::${t.text||""}`;
   const doneTodos=()=>new Set(_lsGet("lucid_done_todos"));
   const seenNotes=()=>new Set(_lsGet("lucid_seen_notes"));
   const markSeen =(id)=>{ const s=new Set(_lsGet("lucid_seen_notes")); s.add(id); _lsSet("lucid_seen_notes",[...s]); };
@@ -936,15 +970,16 @@ const App = (() => {
       ${masthead({title:"Review", wide:true})}
       <div class="figrow">${Array(5).fill('<div class="statcard"><span class="figure">·</span><span class="figcap">&nbsp;</span></div>').join("")}</div>
       ${skeletons(3)}</div>`;
-    const grab=(p)=>api(p).then(r=>r).catch(()=>null);
+    const failed=[];
+    const grab=(p,l)=>api(p).then(r=>r).catch(()=>{ failed.push(l); return null; });
     let recs; try{ recs = cache.length ? cache : await api("/api/recordings"); }
     catch(e){ return authOrError(e,showReview); }
     cache=recs;
     const [crm,tasks,vens]=await Promise.all([
-      grab("/api/crm/board"), grab("/api/data/action-items"), grab("/api/ventures")]);
+      grab("/api/crm/board","CRM"), grab("/api/data/action-items","To-dos"), grab("/api/ventures","Ideas")]);
     const board=(crm&&!crm.missing)?crm:{contacts:[],stats:{},review:[]};
     crmData=board;
-    paintReview({ recs, crm:board, tasks:(tasks&&tasks.action_items)||[], vens:vens||[] });
+    paintReview({ recs, crm:board, tasks:(tasks&&tasks.action_items)||[], vens:vens||[], _failed:failed });
   }
 
   function reviewBuild(b){
@@ -953,7 +988,7 @@ const App = (() => {
     const done=doneTodos(), seen=seenNotes(), bseen=briefSeen(), items=[];
     // 1 — contacts who owe you a reply (client > lead > network; draft acts faster)
     (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{
-      const rid="reply:"+c.email+":"+(c.last_ts||""); if(bseen.has(rid)) return;
+      const rid="reply:"+c.email+":"+(Date.parse(c.last_ts)||0); if(bseen.has(rid)) return;
       const client=!!c.is_client, lead=!client&&c.bucket!=="business", draft=!!c.draft;
       const ageH=(now-new Date(c.last_ts||now))/3600000;
       const score=(client?100:lead?80:60)+(draft?8:0)+(ageH<24?6:ageH<72?2:0);
@@ -961,14 +996,14 @@ const App = (() => {
         kind: client?"Client · owes you a reply" : lead?"Lead · owes you a reply" : "Owes you a reply",
         title:c.name||c.company||c.email, sub:c.situation||c.summary||"Waiting on your reply",
         pills: draft?[{t:"draft ready",cls:"go"}]:[],
-        time: rel(new Date(c.last_ts||now).toISOString()),
+        time: relTs(c.last_ts||now),
         open:()=>go("/crm/"+encodeURIComponent(c.email)),
         dismiss:()=>{ markBrief(rid); logActivity("read","Reply",c.name||c.company||c.email,"lucid_seen_brief",rid); },
         actions:[ draft ? {label:"Copy draft", primary:true, run:copyDraft(c.draft)}
           : {label:"Reply →", primary:true, run:()=>go("/crm/"+encodeURIComponent(c.email))} ] });
     });
     // 2 — open to-dos (overdue first)
-    (b.tasks||[]).filter(keepAi).forEach(t=>{ const id=todoId(t); if(done.has(id)) return;
+    (b.tasks||[]).filter(keepAi).filter(t=>!done.has(todoId(t))).slice(0,30).forEach(t=>{ const id=todoId(t);
       const due=(t.due||"").toLowerCase(); const overdue=/(yesterday|overdue|asap|today|now)/.test(due);
       const fresh=isToday(t.created_at); const score=50+(overdue?20:0)+(fresh?6:0);
       items.push({ type:"todo", score, glyph:"✓", domain: overdue?"var(--caution)":"var(--positive)",
@@ -983,8 +1018,13 @@ const App = (() => {
         kind:"Tense note · review", title:r.headline||"Conversation",
         sub:r.summary||"A tense moment worth a second look", pills:[], time:rel(r.created_at),
         seenId:r.id, open:()=>go("/r/"+r.id),
-        dismiss:()=>{ markSeen(r.id); logActivity("read","Tense note",r.headline||"Conversation","lucid_seen_notes",r.id); },
-        actions:[{label:"Open →", primary:true, run:()=>{markSeen(r.id);go("/r/"+r.id);}}] });
+        dismiss:()=>{ markSeen(r.id); markBrief("tense:"+r.id);
+          logActivity("read","Tense note",r.headline||"Conversation",
+            [{store:"lucid_seen_notes",sid:r.id},{store:"lucid_seen_brief",sid:"tense:"+r.id}]); },
+        actions:[{label:"Open →", primary:true, run:()=>{ markSeen(r.id); markBrief("tense:"+r.id);
+          logActivity("read","Tense note",r.headline||"Conversation",
+            [{store:"lucid_seen_notes",sid:r.id},{store:"lucid_seen_brief",sid:"tense:"+r.id}]);
+          go("/r/"+r.id); }}] });
     });
     // 4 — new notes today to triage
     (b.recs||[]).filter(r=>r.status==="done"&&isToday(r.created_at)&&mood(r).k!=="tense"&&!seen.has(r.id)&&keepRec(r)).slice(0,8).forEach(r=>{
@@ -993,7 +1033,8 @@ const App = (() => {
         title:r.headline||"Untitled", sub:r.summary||m.w, pills:[], time:rel(r.created_at),
         seenId:r.id, open:()=>go("/r/"+r.id),
         dismiss:()=>{ markSeen(r.id); logActivity("read","Note",r.headline||"Untitled","lucid_seen_notes",r.id); },
-        actions:[{label:"Open →", run:()=>{markSeen(r.id);go("/r/"+r.id);}}] });
+        actions:[{label:"Open →", run:()=>{ markSeen(r.id);
+          logActivity("read","Note",r.headline||"Untitled","lucid_seen_notes",r.id); go("/r/"+r.id); }}] });
     });
     // 5 — ideas with no build plan yet
     (b.vens||[]).filter(v=>!v.has_spec).slice(0,6).forEach(v=>{
@@ -1009,7 +1050,6 @@ const App = (() => {
       items.push({ type:"promote", score:28, glyph:"＋", domain:"var(--ink-3)", multi:true,
         kind:"Maybe a contact?", title:r.name||r.company||r.email,
         sub:r.summary||r.category||"Skipped — promote if it belongs", pills:[], time:"",
-        open:()=>go("/crm/"+encodeURIComponent(r.email)),
         actions:[ {label:"+ Client", primary:true, run:(row)=>crmPromote(r.email,"promote",row)},
                   {label:"+ Lead", run:(row)=>crmPromote(r.email,"lead",row)},
                   {label:"✕", x:true, run:(row)=>crmPromote(r.email,"remove",row)} ] });
@@ -1036,11 +1076,13 @@ const App = (() => {
     const acts=(it.actions||[]).map((a,ai)=>
       `<button class="rv-cta${a.primary?" is-primary":""}${a.x?" is-x":""}" data-act="${ai}"${a.gen?' data-gen="1"':''}>${h(a.label)}</button>`).join("");
     const dismiss=it.dismiss?`<button class="rv-dismiss" title="Mark read" aria-label="Mark read" data-dismiss="1">✓</button>`:"";
+    const mainInner=`<div class="rv-kind">${h(it.kind)}</div>
+        <div class="rv-title">${h(it.title)}</div>
+        ${it.sub?`<div class="rv-sub">${h(it.sub)}</div>`:""}${meta}`;
+    const main=it.open?`<button class="rv-main">${mainInner}</button>`:`<div class="rv-main rv-main--static">${mainInner}</div>`;
     return `<div class="rvitem${it.multi?" has-multi":""}" data-i="${it._i}" style="--domain:${it.domain}">
       <span class="rv-chip"><span>${it.glyph}</span></span>
-      <button class="rv-main"><div class="rv-kind">${h(it.kind)}</div>
-        <div class="rv-title">${h(it.title)}</div>
-        ${it.sub?`<div class="rv-sub">${h(it.sub)}</div>`:""}${meta}</button>
+      ${main}
       <div class="rv-act">${acts}${dismiss}</div></div>`;
   }
 
@@ -1057,9 +1099,11 @@ const App = (() => {
     if(counts.todo)   bits.push(`<b>${counts.todo}</b> to-do${counts.todo>1?"s":""}`);
     if(counts.triage) bits.push(`<b>${counts.triage}</b> to review`);
     if(counts.idea)   bits.push(`<b>${counts.idea}</b> idea${counts.idea>1?"s":""}`);
+    const _failed=(b&&b._failed)||[];
     const ed = all.length
       ? (nNow?`<b>${nNow}</b> need${nNow>1?"":"s"} you now — `:"")+(bits.join(" · ")||"a few odds and ends")+"."
-      : "Nothing needs you. You're all caught up.";
+      : (_failed.length?`Couldn't load ${h(_failed.join(", "))} — some items may be missing.`
+        : "Nothing needs you. You're all caught up.");
     setSubline(all.length
       ? [nNow&&nNow+" now", counts.reply&&counts.reply+" owed", counts.todo&&counts.todo+" to-dos"].filter(Boolean).join(" · ")
       : "all clear");
@@ -1090,23 +1134,31 @@ const App = (() => {
     const doneN=(b.tasks||[]).filter(t=>doneTodos().has(todoId(t))).length;
     const doneBar = (reviewFilter!=="done" && doneN) ? `<div class="rv-donebar"><span>✓ ${doneN} to-do${doneN>1?"s":""} done today</span>
       <button class="rv-undo" id="rvUndo">Undo last</button></div>` : "";
+    const failBanner=_failed.length?`<div class="panel" id="rvWarn" style="display:flex;align-items:center;gap:12px;border-color:var(--ten)">
+      <span style="flex:1;font-size:14px;color:var(--ink-soft)">Couldn't load ${h(_failed.join(", "))} — some items may be missing.</span>
+      <button class="btn ghost" id="rvWarnRetry">Retry</button>
+      <button class="btn ghost" id="rvWarnX" aria-label="Dismiss">✕</button></div>`:"";
     app.innerHTML=`<div class="view view--wide review2">
       ${masthead({title:"Review", note:ed, wide:true})}
+      ${failBanner}
       <div class="figrow">${ribbon}</div>${body}${doneBar}</div>`;
     paintDone();
+    const rw=document.getElementById("rvWarnRetry"); if(rw) rw.onclick=()=>showReview();
+    const rx=document.getElementById("rvWarnX"); if(rx) rx.onclick=()=>{ const n=document.getElementById("rvWarn"); if(n) n.remove(); };
     app.querySelectorAll(".figrow .statcard[data-f]").forEach(s=>s.onclick=()=>{ reviewFilter=s.dataset.f; paintReview(_rvData); });
     app.querySelectorAll(".rvitem").forEach(row=>{ const it=_rvItems[+row.dataset.i]; if(!it) return;
       const main=row.querySelector(".rv-main");
-      if(main) main.onclick=()=>{ if(it.seenId) markSeen(it.seenId); it.open&&it.open(); };
+      if(main) main.onclick=()=>{ if(it.seenId){ it.dismiss?it.dismiss():markSeen(it.seenId); } it.open&&it.open(); };
       row.querySelectorAll(".rv-cta[data-act]").forEach(btn=>btn.onclick=(e)=>{
         e.stopPropagation(); const a=it.actions[+btn.dataset.act]; if(a&&a.run) a.run(row,btn); });
       const dz=row.querySelector("[data-dismiss]");
-      if(dz) dz.onclick=(e)=>{ e.stopPropagation(); if(it.dismiss) it.dismiss(); toast("Marked read"); collapseRow(row, ()=>paintReview(_rvData)); }; });
+      if(dz) dz.onclick=(e)=>{ e.stopPropagation(); if(row.dataset.busy) return; row.dataset.busy="1";
+        if(it.dismiss) it.dismiss(); toast("Marked read"); collapseRow(row, ()=>paintReview(_rvData)); }; });
     const ub=document.getElementById("rvUndo");
     if(ub) ub.onclick=()=>{ const log=_lsGet("lucid_activity");
       const i=log.findIndex(e=>e.type==="done"&&(e.store==="lucid_done_todos"||(e.stores||[]).some(s=>s.store==="lucid_done_todos")));
-      if(i>=0) undoActivity(i); else { const arr=_lsGet("lucid_done_todos"); arr.pop(); _lsSet("lucid_done_todos",arr); }
-      toast("Undone"); paintReview(_rvData); };
+      if(i<0){ toast("Nothing to undo"); return; }
+      undoActivity(i); toast("Undone"); paintReview(_rvData); };
     app.querySelectorAll(".actrow [data-undo]").forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); undoActivity(+b.dataset.undo); toast("Restored"); paintReview(_rvData); });
     const ac=document.getElementById("actClear");
     if(ac) ac.onclick=()=>{ if(!confirm("Clear your done/read history?")) return; clearActivity(); toast("History cleared"); paintReview(_rvData); };
@@ -1141,8 +1193,9 @@ const App = (() => {
     row.addEventListener("transitionend",fin,{once:true}); setTimeout(fin,340);
   }
   function completeTodo(id,row,title){
-    const arr=_lsGet("lucid_done_todos"); if(!arr.includes(id)){ arr.push(id); _lsSet("lucid_done_todos",arr); }
-    logActivity("done","To-do",title||"To-do","lucid_done_todos",id);
+    const arr=_lsGet("lucid_done_todos");
+    if(!arr.includes(id)){ arr.push(id); _lsSet("lucid_done_todos",arr);
+      logActivity("done","To-do",title||"To-do","lucid_done_todos",id); }
     toast("Done ✓"); collapseRow(row, ()=>paintReview(_rvData));
   }
   async function generatePlan(vid,row){
@@ -2229,7 +2282,7 @@ const App = (() => {
         const r=await api(`/api/recordings/${current.id}/chat`,{method:"POST",headers:{"Content-Type":"application/json"},
           body:JSON.stringify({message:q, history:chatHist.slice(0,-1).map(m=>({role:m.role,content:m.content}))})});
         chatHist.push({role:"assistant", content:r.answer||"", quotes:r.quotes||[]});
-        if (r.applied_edits && r.applied_edits.length){ cache=[]; toast("Updated names"); try{ current=await api(`/api/recordings/${current.id}`);}catch(e){} }
+        if (r.applied_edits && r.applied_edits.length){ cache=[]; toast("Updated names"); try{ current=await api(`/api/recordings/${current.id}`);}catch(e){} if(document.getElementById("tabbody")) renderTab(); }
         renderChatMsgs(box); box.scrollTop=box.scrollHeight;
       }catch(e){ chatHist.push({role:"assistant", content:"⚠ "+(e.message||"failed"), quotes:[]}); renderChatMsgs(box); }
     };
@@ -2477,19 +2530,26 @@ const App = (() => {
   let _pendingDel=null;
   async function _flushDel(){ const p=_pendingDel; _pendingDel=null;
     if(p){ try{ await api(`/api/recordings/${p.id}`,{method:"DELETE"}); }catch(_){} } }
+  // flush a deferred delete on page exit so closing/backgrounding the PWA can't silently drop it
+  const _hardFlush=()=>{ const p=_pendingDel; if(!p) return; _pendingDel=null;
+    try{ fetch(`/api/recordings/${p.id}`,{method:"DELETE",
+      headers: token?{"Authorization":"Bearer "+token}:{}, keepalive:true}); }catch(_){} };
+  window.addEventListener("pagehide", _hardFlush);
+  document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") _hardFlush(); });
   async function del(id){
-    await _flushDel();                                  // commit any earlier pending delete first
-    const idx=cache.findIndex(r=>r.id===id), rec=cache[idx];
-    if(idx<0){ try{ await api(`/api/recordings/${id}`,{method:"DELETE"}); }catch(_){} cache=[]; go("/lucid/notes"); return; }
-    cache=cache.filter(r=>r.id!==id);                   // optimistic remove
-    _pendingDel={id, rec, idx};
+    await _flushDel();                                       // commit any earlier pending delete first
+    const idx=cache.findIndex(r=>r.id===id);
+    const rec = idx>=0 ? cache[idx] : (current && current.id===id ? current : null);
+    cache=cache.filter(r=>r.id!==id);                        // optimistic remove (no-op if absent)
+    _pendingDel={id, rec, idx:Math.max(idx,0)};
     if(location.pathname.startsWith("/r/")) go("/lucid/notes");
     else if(location.pathname.startsWith("/lucid")) paintNotes();
     toast("Note deleted", {label:"Undo", ms:6000, run:()=>{
       if(_pendingDel && _pendingDel.id===id){ const p=_pendingDel; _pendingDel=null;
-        cache.splice(Math.min(p.idx,cache.length),0,p.rec);
-        if(location.pathname.startsWith("/lucid")) paintNotes(); else route(); } }});
-    setTimeout(()=>{ if(_pendingDel && _pendingDel.id===id) _flushDel(); }, 6300);
+        if(p.rec && !cache.some(r=>r.id===p.id)) cache.splice(Math.min(p.idx,cache.length),0,p.rec);
+        if(location.pathname==="/lucid/notes") paintNotes(); else route(); } }});
+    setTimeout(async ()=>{ if(_pendingDel && _pendingDel.id===id){ await _flushDel();
+      if(location.pathname==="/lucid/notes") showNotes(); } }, 6300);
   }
 
   function authOrError(e,retry){
@@ -2500,21 +2560,24 @@ const App = (() => {
 
   async function showLogin(retry){
     const finish=(d)=>{ token=(d&&d.token)||""; localStorage.setItem("lucid_token",token); (retry||route)(); };
-    let st={};
-    try{ st=await fetch("/api/login/email/status").then(r=>r.json()); }catch(_){}
-    if(!st.available) return passwordLogin(retry,finish);   // silent fallback only if Gmail is down
-    const sendCode=()=>fetch("/api/login/email/request",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).catch(()=>{});
+    let st=null;
+    try{ const r=await fetch("/api/login/email/status"); if(r.ok) st=await r.json(); }catch(_){}
+    if(st && st.available===false) return passwordLogin(retry,finish);   // drop to password only on explicit no
+    const sendCode=()=>fetch("/api/login/email/request",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(r=>r.json()).catch(()=>({}));
     sendCode();                                              // code is already waiting when you look
     app.innerHTML=`<div class="login"><div class="login-card">
       <div class="lock">✦</div><h2>Sign in to Lucid</h2>
-      <p>We just emailed a 6-digit code to <b>${h(st.hint||"your email")}</b>. Enter it to continue.</p>
+      <p>We just emailed a 6-digit code to <b>${h((st&&st.hint)||"your email")}</b>. Enter it to continue.</p>
       <div class="login-err" id="lerr"></div>
       <input id="lcode" type="text" inputmode="numeric" maxlength="6" placeholder="••• •••" autocomplete="one-time-code" />
       <button class="btn primary" id="lbtn">Sign in</button>
       <button class="loginalt" id="lresend">Resend code</button>
     </div></div>`;
     const c=document.getElementById("lcode"), btn=document.getElementById("lbtn"), err=document.getElementById("lerr");
-    document.getElementById("lresend").onclick=async(e)=>{ e.target.disabled=true; await sendCode(); err.textContent="New code sent."; setTimeout(()=>{try{e.target.disabled=false;}catch(_){}},2500); };
+    document.getElementById("lresend").onclick=async(e)=>{ e.target.disabled=true; const d=await sendCode();
+      if(d&&d.retry_in){ err.textContent=`Code already sent — check your inbox. Resend in ${d.retry_in}s.`;
+        setTimeout(()=>{try{e.target.disabled=false;}catch(_){}}, d.retry_in*1000); }
+      else { err.textContent="New code sent."; setTimeout(()=>{try{e.target.disabled=false;}catch(_){}},2500); } };
     const go=async()=>{ const v=c.value.replace(/\D/g,""); if(v.length<6){ err.textContent="Enter the 6-digit code."; return; }
       if(btn.disabled) return;
       btn.disabled=true; err.textContent="";
@@ -2523,7 +2586,9 @@ const App = (() => {
         finish(await r.json());
       }catch(e){ err.textContent="Network error — try again."; btn.disabled=false; } };
     btn.onclick=go; c.onkeydown=e=>{ if(e.key==="Enter") go(); };
-    c.oninput=()=>{ if(c.value.replace(/\D/g,"").length===6) go(); };   // auto-submit when 6 digits in
+    let _lastTried="", _submitT=null;
+    c.oninput=()=>{ const v=c.value.replace(/\D/g,""); clearTimeout(_submitT);
+      if(v.length===6 && v!==_lastTried){ _submitT=setTimeout(()=>{ _lastTried=v; go(); }, 350); } };   // debounced auto-submit
     setTimeout(()=>{try{c.focus();}catch(_){}} ,120);
   }
   function passwordLogin(retry,finish){

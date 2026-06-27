@@ -1456,6 +1456,8 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
 .rv-title{font-size:var(--text-h3);font-weight:var(--w-semi);color:var(--ink);line-height:1.3;
   letter-spacing:var(--ls-tight);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .rv-main:hover .rv-title{color:var(--accent-ink);}
+.rv-main--static{cursor:default;}
+.rv-main--static:hover .rv-title{color:var(--ink);}
 .rv-sub{font-size:var(--text-sm);color:var(--ink-2);line-height:1.35;margin-top:2px;
   display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;}
 .rv-meta{display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap;}
@@ -1567,7 +1569,7 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
 /* ===== nice-to-haves: toast action, masthead refresh, cold-start, review dismiss ===== */
 .toast{ display:flex; align-items:center; gap:14px; }
 .toast-act{ background:none; border:0; color:var(--accent-ink); font:inherit; font-weight:var(--w-semi);
-  font-size:13px; cursor:pointer; padding:2px 4px; white-space:nowrap; }
+  font-size:13px; cursor:pointer; padding:2px 4px; white-space:nowrap; pointer-events:auto; }
 .toast-act:hover{ text-decoration:underline; }
 
 .hero{ position:relative; }
