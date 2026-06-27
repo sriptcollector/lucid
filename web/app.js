@@ -101,7 +101,6 @@ const App = (() => {
     // Falls back to showHome until the Notes-feed area lands showNotes().
     if (p==="/notes"){ setTab("notes"); return (typeof showNotes==="function"?showNotes:showHome)(); }
     if (p==="/search"){ setTab("search"); return showSearch(); }
-    if (p==="/review"){ setTab("home"); return showReview(); }
     if (p==="/settings"){ setTab("settings"); return showSettings(); }
     const cm=p.match(/^\/crm\/(.+)$/);
     if (cm){ setTab("crm"); return showCRMContact(decodeURIComponent(cm[1])); }
@@ -369,10 +368,7 @@ const App = (() => {
   ];
 
   async function showNotes(){
-    if (!cache.length) app.innerHTML=`<div class="view notes-feed">
-      ${masthead({title:"Notes"})}
-      <div class="figrow">${Array(4).fill('<div class="statcard"><span class="figure">·</span><span class="figcap">&nbsp;</span></div>').join("")}</div>
-      ${skeletons()}</div>`;
+    if (!cache.length) app.innerHTML=`<div class="view"><div class="hero"><h1>…</h1></div>${skeletons()}</div>`;
     let recs; try { recs=await api("/api/recordings"); } catch(e){ return authOrError(e,showNotes); }
     cache=recs; paintNotes();
     if (recs.some(r=>!["done","error"].includes(r.status))) pollTimer=setTimeout(showNotes,4000);
@@ -383,35 +379,14 @@ const App = (() => {
     const done=recs.filter(r=>r.status==="done");
     const mins=Math.round(done.reduce((a,r)=>a+(r.duration||0),0)/60);
     const tense=done.filter(r=>mood(r).k==="tense").length;
-    const seen=new Set();
-    done.forEach(r=>(r.people||[]).forEach(p=>{ const n=(typeof p==="string"?p:(p&&(p.name||p.label)))||"";
-      if(n.trim()) seen.add(n.trim().toLowerCase()); }));
-    const ppl=seen.size;
+    const hr=new Date().getHours();
+    const greet=hr<12?"Good morning":hr<18?"Good afternoon":"Good evening";
+    document.getElementById("subline").textContent=recs.length?`${recs.length} note${recs.length>1?"s":""}`:"notes";
 
     const ft=FILTERS.find(f=>f.k===homeFilter)||FILTERS[0];
     let list=recs.filter(ft.test);
     if (homeSort==="oldest") list=[...list].reverse();
     else if (homeSort==="longest") list=[...list].sort((a,b)=>(b.duration||0)-(a.duration||0));
-
-    const bits=[`<b>${recs.length}</b> note${recs.length!==1?"s":""}`];
-    if(mins)  bits.push(`<b>${mins}</b> min on the record`);
-    if(tense) bits.push(`<b>${tense}</b> tense`);
-    const ed = recs.length
-      ? `Everything you've captured, sorted and ready — ${bits.join(" · ")}.`
-      : "Record on your Plaud and your notes land here automatically — transcribed, summarised, sorted.";
-    setSubline(recs.length?`${recs.length} note${recs.length!==1?"s":""}${tense?` · ${tense} tense`:""}`:"notes");
-
-    const figs=[
-      {n:recs.length, cap:"Notes",        col:"var(--ink)",      f:"all"},
-      {n:mins,        cap:"Min captured",  col:"var(--decision)", sort:"longest"},
-      {n:tense,       cap:"Tense",         col:"var(--ten)",      f:"tense"},
-      {n:ppl,         cap:"People seen",   col:"var(--accent)",   f:"people"},
-    ];
-    const ribbon=figs.map(f=>{
-      const on = f.sort ? homeSort===f.sort : homeFilter===f.f;
-      return `<button class="statcard${on?" on":""}" ${f.sort?`data-sort="${f.sort}"`:`data-f="${f.f}"`} style="--mc:${f.col}">
-        <span class="figure">${f.n}</span><span class="figcap">${h(f.cap)}</span></button>`;
-    }).join("");
 
     let body;
     if (!recs.length){
@@ -424,8 +399,7 @@ const App = (() => {
       const groups={}; list.forEach(r=>{ const b=dayBucket(r.created_at)||"Earlier"; (groups[b]=groups[b]||[]).push(r); });
       const order=["Today","Yesterday","This week","This month","Earlier"];
       body=order.filter(k=>groups[k]).map(k=>`<div class="daygroup">
-        <div class="daylabel">${k}<span class="n">${groups[k].length}</span></div>
-        <div class="feed">${groups[k].map(cardHTML).join("")}</div></div>`).join("");
+        <div class="daylabel">${k}</div><div class="feed">${groups[k].map(cardHTML).join("")}</div></div>`).join("");
     } else {
       body=`<div class="feed">${list.map(cardHTML).join("")}</div>`;
     }
@@ -438,35 +412,32 @@ const App = (() => {
         <option value="longest"${homeSort==="longest"?" selected":""}>Longest</option>
       </select></span></div>`:"";
 
-    app.innerHTML=`<div class="view notes-feed">
-      ${masthead({title:`Notes <span class="count">${done.length} sorted</span>`, note:ed})}
-      ${recs.length?`<div class="figrow">${ribbon}</div>`:""}
-      ${filterbar}${body}</div>`;
+    app.innerHTML=`<div class="view">
+      <div class="hero"><div class="greeting">${greet}</div>
+        <h1>Your notes <span class="count">${done.length} sorted</span></h1>
+        <div class="stats">
+          ${mins?`<span><b>${mins}</b> min captured</span>`:""}
+          ${tense?`<span><span class="stat-dot"></span><b>${tense}</b> tense</span>`:""}
+        </div>
+      </div>${filterbar}${body}</div>`;
     paintDone();
     bindCards();
-    app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
-    const ms=app.querySelector(".statcard[data-sort]");
-    if(ms) ms.onclick=()=>{ homeSort = homeSort===ms.dataset.sort ? "newest" : ms.dataset.sort; paintNotes(); };
-    app.querySelectorAll(".filterbar .fchip").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
+    app.querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
     const ss=document.getElementById("sortSel"); if(ss) ss.onchange=()=>{ homeSort=ss.value; paintNotes(); };
   }
 
   function cardHTML(r){
     const m=mood(r);
-    const done=r.status==="done";
-    const title=r.headline||(done?"Untitled":"New recording");
+    const title=r.headline||(r.status==="done"?"Untitled":"New recording");
     const topics=(r.topics||[]).slice(0,2).map(t=>`<span class="chip">${h(t)}</span>`).join("");
     const proc=["done","error"].includes(r.status)?"":`<span class="proc"><span class="spin"></span>${h(r.status)}…</span>`;
-    const ppl=(r.people||[]).length;
-    return `<div class="rcard notecard${done?"":" pending"}" data-id="${r.id}" style="--mc:${m.c}">
+    return `<div class="rcard" data-id="${r.id}" style="--mc:${m.c}">
       <div class="tile ${m.k}"></div>
       <div class="rbody"><h3>${h(title)}</h3>
         ${r.summary?`<div class="snip">${h(r.summary)}</div>`:""}
         <div class="rmeta">
-          ${done?`<span class="chip mood">${m.w}</span>`:proc}
-          ${r.duration?`<span class="chip">${fmt(r.duration)}</span>`:""}
-          ${ppl?`<span class="chip">${ppl} ${ppl>1?"people":"person"}</span>`:""}
-          ${topics}
+          ${r.status==="done"?`<span class="chip mood">${m.w}</span>`:proc}
+          ${r.duration?`<span class="chip">${fmt(r.duration)}</span>`:""}${topics}
           <span class="time">${h(rel(r.created_at))}</span>
         </div></div></div>`;
   }
@@ -612,11 +583,6 @@ const App = (() => {
     const _railX = app.querySelector('.todayrail')?.scrollLeft || 0;
     app.innerHTML=`<div class="view view--wide brief">
       ${masthead({title:`${greet}${who?(", "+h(who)):""}.`, note:ed, wide:true})}
-      <button class="reviewcta" ${actAttr(()=>go("/review"))}>
-        <span class="rc-ic">◴</span>
-        <span class="rc-txt"><b>The day in review</b>
-          <span>Today's notes, replies, to-dos &amp; people seen</span></span>
-        <span class="rc-go">→</span></button>
       <div class="figrow">${ribbon}</div>
       <div class="deck">
         <div class="panel sp-7"><h2>Needs you${items.length?`<span class="hcount">${items.length}</span>`:""}</h2>
@@ -637,268 +603,21 @@ const App = (() => {
     bindBrief();
   }
 
-  // ===== UNIFIED SEARCH (notes · people · ideas · CRM contacts) =====
-  let searchIdx=null, searchType="all", searchTerm="", _searchSel=-1, _searchFlat=[];
-  const STYPES=[
-    {k:"note",    label:"Notes",    domain:"var(--ink-soft)", tab:"/notes"},
-    {k:"person",  label:"People",   domain:"var(--accent)",   tab:"/people"},
-    {k:"idea",    label:"Ideas",    domain:"var(--topic)",    tab:"/ventures"},
-    {k:"contact", label:"Contacts", domain:"var(--pos)",      tab:"/crm"},
-  ];
-  const styp=(k)=>STYPES.find(s=>s.k===k)||STYPES[0];
-
-  async function buildSearchIndex(force){
-    if(searchIdx && !force) return searchIdx;
-    const grab=(p)=>api(p).then(r=>r).catch(()=>null);
-    const [recs,ppl,vens,crm]=await Promise.all([
-      grab("/api/recordings"), grab("/api/people"), grab("/api/ventures"), grab("/api/crm/board")]);
-    if(Array.isArray(recs)) cache=recs;
-    if(crm && !crm.missing) crmData=crm;
-    const idx=[];
-    (recs||[]).forEach(r=>{ if(!r.headline && !r.summary) return;
-      idx.push({ type:"note", title:r.headline||"Untitled note", sub:r.summary||"",
-        meta:rel(r.created_at), ts:+new Date(r.created_at||0), domain:mood(r).c,
-        go:()=>go("/r/"+r.id),
-        blob:_norm([r.headline,r.summary,(r.topics||[]).join(" "),(r.people||[]).join(" ")].join(" ")) }); });
-    (ppl||[]).forEach(p=>{ if(!p.name) return;
-      idx.push({ type:"person", title:p.name,
-        sub:p.role||`${p.interactions} conversation${p.interactions>1?"s":""}`,
-        meta:rel(p.last_seen), ts:+new Date(p.last_seen||0), domain:`var(--${toneClass(p.tone)})`,
-        go:()=>go("/people/"+encodeURIComponent(p.key)),
-        blob:_norm([p.name,p.role,(p.natures||[]).join(" ")].join(" ")) }); });
-    (vens||[]).forEach(v=>{ if(!v.title) return;
-      idx.push({ type:"idea", title:v.title, sub:v.summary||(v.has_spec?"Build plan ready":"No plan yet"),
-        meta:v.has_spec?"plan ✓":"", ts:+new Date(v.last_seen||0), domain:"var(--topic)",
-        go:()=>go("/ventures/"+encodeURIComponent(v.id)),
-        blob:_norm([v.title,v.summary,(v.people||[]).join(" "),v.status].join(" ")) }); });
-    (((crm&&!crm.missing&&crm.contacts))||[]).forEach(c=>{ const nm=c.company||c.name; if(!nm) return;
-      idx.push({ type:"contact", title:nm,
-        sub:[c.name&&c.name!==nm?c.name:"", c.summary||c.stage||""].filter(Boolean).join(" · "),
-        meta:c.stage||"", ts:+new Date(c.last_ts||0), domain:stageColor(c),
-        go:()=>go("/crm/"+encodeURIComponent(c.email)),
-        blob:_norm([c.name,c.company,c.summary,c.stage,c.email].join(" ")) }); });
-    searchIdx=idx; return idx;
-  }
-
-  function searchRun(term){
-    const t=_norm(term); if(!t) return [];
-    const words=t.split(" ").filter(Boolean); const out=[];
-    searchIdx.forEach(it=>{
-      if(searchType!=="all" && it.type!==searchType) return;
-      const title=_norm(it.title); let score=0, ok=true;
-      for(const w of words){
-        if(!it.blob.includes(w)){ ok=false; break; }
-        score += title.startsWith(w)?6 : title.includes(w)?4 : 1;
-      }
-      if(!ok) return;
-      if(title===t) score+=10;
-      out.push({it,score});
-    });
-    out.sort((a,b)=> b.score-a.score || (b.it.ts||0)-(a.it.ts||0));
-    return out.map(s=>s.it);
-  }
-
-  function searchChipsHTML(){
-    const counts={}; searchIdx.forEach(x=>counts[x.type]=(counts[x.type]||0)+1);
-    const chips=[{k:"all",l:"All",n:searchIdx.length}]
-      .concat(STYPES.map(s=>({k:s.k,l:s.label,n:counts[s.k]||0})));
-    return chips.map(c=>`<button class="fchip${searchType===c.k?" on":""}" data-st="${c.k}">${c.l}${c.n?` <span class="fn">${c.n}</span>`:""}</button>`).join("");
-  }
-
-  function searchRowHTML(it,i){
-    const s=styp(it.type), dom=it.domain||s.domain;
-    const sub=[it.sub,it.meta].filter(Boolean).join("  ·  ");
-    return `<div class="minirow sres" data-si="${i}" style="--domain:${dom}">
-      <span class="spinedot"></span>
-      <div class="mtxt"><div class="mt1">${h(it.title)}</div>${sub?`<div class="mt2">${h(sub)}</div>`:""}</div>
-      <span class="stype">${s.label}</span></div>`;
-  }
-
-  function searchLanding(){
-    const recent=[...searchIdx].filter(x=>searchType==="all"||x.type===searchType)
-      .sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,7);
-    if(!recent.length) return `<div class="searchtip">Search everything at once — notes, people, ideas, and CRM contacts. Type a name, a topic, or a company.</div>`;
-    const rows=recent.map(it=>{ const i=_searchFlat.length; _searchFlat.push(it); return searchRowHTML(it,i); }).join("");
-    return `<div class="panel sgroup"><h2>Recent<span class="hcount">${recent.length}</span></h2>${rows}</div>
-      <div class="searchtip">One search across notes, people, ideas &amp; contacts. ↑↓ to move · ↵ to open.</div>`;
-  }
-
-  function bindSearchRows(){
-    app.querySelectorAll(".sres").forEach(r=>r.onclick=()=>{ const it=_searchFlat[+r.dataset.si]; if(it&&it.go) it.go(); });
-    app.querySelectorAll("#sresults .seeall[data-tab]").forEach(b=>b.onclick=()=>go(b.dataset.tab));
-  }
-
-  function paintSearch(){
-    if(!searchIdx) return;
-    const sf=document.getElementById("sfilter"), results=document.getElementById("sresults");
-    if(sf){ sf.innerHTML=searchChipsHTML();
-      sf.querySelectorAll("[data-st]").forEach(b=>b.onclick=()=>{ searchType=b.dataset.st; _searchSel=-1; paintSearch();
-        const q=document.getElementById("q"); if(q) q.focus(); }); }
-    _searchFlat=[]; _searchSel=-1;
-    const term=searchTerm.trim();
-    if(!term){ results.innerHTML=searchLanding(); bindSearchRows(); setSubline("search"); return; }
-    const hits=searchRun(term);
-    setSubline(hits.length?`${hits.length} result${hits.length>1?"s":""}`:"no matches");
-    if(!hits.length){ results.innerHTML=`<div class="empty"><div class="big">⌕</div>No matches for “${h(term)}”.
-      <div class="hint">Search spans notes, people, ideas, and contacts. Try a name, a topic, or a company.</div></div>`; return; }
-    const order=searchType==="all"?["note","person","idea","contact"]:[searchType];
-    let html="";
-    order.forEach(k=>{ const items=hits.filter(x=>x.type===k); if(!items.length) return;
-      const s=styp(k), cap=searchType==="all"?5:300, shown=items.slice(0,cap);
-      const rows=shown.map(it=>{ const i=_searchFlat.length; _searchFlat.push(it); return searchRowHTML(it,i); }).join("");
-      const more=items.length>cap?`<button class="seeall" data-tab="${s.tab}">See all ${items.length} in ${s.label} →</button>`:"";
-      html+=`<div class="panel sgroup"><h2>${s.label}<span class="hcount">${items.length}</span></h2>${rows}${more}</div>`;
-    });
-    results.innerHTML=html;
-    bindSearchRows();
-  }
-
-  function onSearchKey(e){
-    const rows=[...app.querySelectorAll(".sres")];
-    if(e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); if(!rows.length) return;
-      const base=_searchSel<0?(e.key==="ArrowDown"?-1:0):_searchSel;
-      _searchSel=Math.max(0,Math.min(rows.length-1, base+(e.key==="ArrowDown"?1:-1)));
-      rows.forEach((r,i)=>r.classList.toggle("sel",i===_searchSel));
-      rows[_searchSel].scrollIntoView({block:"nearest"});
-    } else if(e.key==="Enter"){
-      const r=rows[_searchSel<0?0:_searchSel]; if(r){ const it=_searchFlat[+r.dataset.si]; if(it&&it.go) it.go(); }
-    } else if(e.key==="Escape"){ const q=document.getElementById("q");
-      if(searchTerm){ searchTerm=""; if(q) q.value=""; const c=document.getElementById("sclear"); if(c) c.hidden=true; paintSearch(); }
-      else if(q) q.blur();
-    }
-  }
-
+  // ===== SEARCH =====
   async function showSearch(){
-    setTab("search");
-    app.innerHTML=`<div class="view view--search">
-      <div class="searchhead"><div class="searchwrap big"><span class="mag">⌕</span>
-        <input id="q" type="search" inputmode="search" enterkeyhint="search"
-          placeholder="Search notes, people, ideas, contacts…"
-          autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
-          value="${attr(searchTerm)}">
-        <button class="sclear" id="sclear" aria-label="Clear search"${searchTerm?"":" hidden"}>✕</button></div></div>
-      <div class="filterbar" id="sfilter"></div>
-      <div id="sresults">${skeletons(3)}</div></div>`;
-    const q=document.getElementById("q"), clr=document.getElementById("sclear");
-    q.oninput=()=>{ searchTerm=q.value; clr.hidden=!searchTerm.trim(); paintSearch(); };
-    q.onkeydown=onSearchKey;
-    clr.onclick=()=>{ searchTerm=""; q.value=""; clr.hidden=true; q.focus(); paintSearch(); };
-    try{ await buildSearchIndex(true); }catch(e){ return authOrError(e,showSearch); }
-    paintSearch();
-    setTimeout(()=>{ try{ q.focus(); }catch(_){} },60);
-  }
-
-  // ===== DAILY REVIEW (end-of-day wrap-up, routed at /review) =====
-  async function showReview(){
-    setTab("home");
-    app.innerHTML=`<div class="view view--wide review">
-      <span class="backlink" onclick="App.go('/')">← Today</span>
-      ${masthead({title:"The day in review", wide:true})}
-      <div class="figrow">${Array(4).fill('<div class="statcard"><span class="figure">·</span></div>').join("")}</div>
-      ${skeletons(2)}</div>`;
-    const grab=(p)=>api(p).then(r=>r).catch(()=>null);
-    let recs; try{ recs = cache.length ? cache : await api("/api/recordings"); }
-    catch(e){ return authOrError(e,showReview); }
-    cache=recs;
-    const [crm,tasks,ppl]=await Promise.all([
-      grab("/api/crm/board"), grab("/api/data/action-items"), grab("/api/people")]);
-    paintReview({ recs,
-      crm:(crm&&!crm.missing)?crm:{contacts:[],stats:{}},
-      tasks:(tasks&&tasks.action_items)||[], ppl:ppl||[] });
-  }
-
-  function paintReview(b){
-    _briefFns=[]; crmData=b.crm;
-    const now=new Date();
-    const isToday=(iso)=>{ const d=new Date(iso); return !isNaN(d) && d.toDateString()===now.toDateString(); };
-    const hr=now.getHours();
-    const close = hr<12?"The morning so far" : hr<18?"The day so far" : "That's the day";
-
-    const notes=b.recs.filter(r=>isToday(r.created_at));
-    const done=notes.filter(r=>r.status==="done");
-    const mins=Math.round(done.reduce((a,r)=>a+(r.duration||0),0)/60);
-
-    const owe=(b.crm.contacts||[]).filter(crmOwe)
-      .sort((a,c)=>new Date(c.last_ts||0)-new Date(a.last_ts||0));
-    let sent=0; (b.crm.contacts||[]).forEach(c=>(c.timeline||[]).forEach(t=>{
-      const dt=Date.parse(t.date);
-      if(t.direction==="out" && !isNaN(dt) && new Date(dt).toDateString()===now.toDateString()) sent++; }));
-
-    const tasks=b.tasks||[];
-    const seen=[]; const sset=new Set();
-    notes.forEach(r=>(r.people||[]).forEach(n=>{ const k=(n||"").toLowerCase().trim();
-      if(n && !sset.has(k)){ sset.add(k); seen.push(n); } }));
-    const pByName={}; (b.ppl||[]).forEach(p=>pByName[(p.name||"").toLowerCase().trim()]=p);
-
-    const bits=[`<b>${notes.length}</b> note${notes.length!==1?"s":""} today`];
-    if(seen.length)  bits.push(`<b>${seen.length}</b> ${seen.length>1?"people":"person"} seen`);
-    if(owe.length)   bits.push(`<b>${owe.length}</b> repl${owe.length>1?"ies":"y"} owed`);
-    if(tasks.length) bits.push(`<b>${tasks.length}</b> to-do${tasks.length>1?"s":""} open`);
-    const ed = (notes.length||seen.length||owe.length||tasks.length)
-      ? bits.join(" · ")+"." : "A quiet day — nothing captured yet. Rest counts too.";
-    setSubline([notes.length+" notes", seen.length&&seen.length+" seen", owe.length&&owe.length+" owed"]
-      .filter(Boolean).join(" · "));
-
-    const figs=[
-      {n:notes.length, cap:"Notes today",  domain:"var(--ink)",           to:"rv-notes"},
-      {n:seen.length,  cap:"People seen",   domain:"var(--accent)",        to:"rv-people"},
-      {n:tasks.length, cap:"To-dos open",   domain:"var(--pos)",           to:"rv-todos"},
-      {n:owe.length,   cap:"Replies owed",  domain:"var(--accent-strong)", to:"rv-replies"},
-    ];
-    const ribbon=figs.map(f=>`<button class="statcard" style="--domain:${f.domain}" data-to="${f.to}">
-      <span class="figure">${f.n}</span><span class="figcap">${h(f.cap)}</span></button>`).join("");
-
-    const mini=(o)=>`<div class="minirow" style="--domain:${o.domain}" ${actAttr(o.go)}>
-      <span class="spinedot"></span><div class="mtxt"><div class="mt1">${h(o.t1)}</div>
-      ${o.t2?`<div class="mt2">${h(o.t2)}</div>`:""}</div>
-      ${o.time?`<span class="mtime">${h(o.time)}</span>`:""}</div>`;
-
-    const notesHTML = notes.length
-      ? notes.slice(0,8).map(r=>{ const m=mood(r); return mini({ domain:m.c,
-          t1:r.headline||"Untitled", t2:r.summary||m.w, time:rel(r.created_at), go:()=>go("/r/"+r.id) }); }).join("")
-        + (notes.length>8?`<span class="seeall" ${actAttr(()=>go("/notes"))}>All notes →</span>`:"")
-      : `<div class="allclear"><b>No notes today.</b> When you record, today's conversations gather here.</div>`;
-
-    const repliesHTML = owe.length
-      ? owe.slice(0,6).map(c=>mini({ domain:stageColor(c), t1:c.name||c.company,
-          t2:(c.draft?"✍ draft ready · ":"")+(c.situation||c.summary||"Owe a reply"),
-          time:rel(new Date(c.last_ts||Date.now()).toISOString()), go:()=>go("/crm/"+encodeURIComponent(c.email)) })).join("")
-        + (sent?`<div class="rv-foot">✓ ${sent} repl${sent>1?"ies":"y"} sent today</div>`:"")
-      : `<div class="allclear"><b>Inbox clear.</b> No replies owed${sent?` · ${sent} sent today`:""}.</div>`;
-
-    const todosHTML = tasks.length
-      ? tasks.slice(0,8).map(t=>mini({ domain:isToday(t.created_at)?"var(--pos)":"var(--neu)",
-          t1:t.text, t2:[t.owner&&("— "+t.owner), t.due&&("due "+t.due), t.note_headline].filter(Boolean).join(" · "),
-          time:isToday(t.created_at)?"new":"", go:()=>go("/r/"+t.note_id) })).join("")
-      : `<div class="allclear"><b>No open to-dos.</b> Clear desk.</div>`;
-
-    const peopleHTML = seen.length
-      ? seen.slice(0,8).map(n=>{ const p=pByName[(n||"").toLowerCase().trim()];
-          return mini({ domain:p?`var(--${toneClass(p.tone)})`:"var(--neu)", t1:n,
-            t2:p?`${toneWord(p.tone)} · ${trendWord(p.trend)}`:"first time on Lucid",
-            time:p?rel(p.last_seen):"", go:()=>go(p?("/people/"+encodeURIComponent(p.key)):"/people") }); }).join("")
-      : `<div class="allclear"><b>No one new today.</b> People from today's notes appear here.</div>`;
-
-    const closing = `${notes.length} note${notes.length!==1?"s":""}`
-      + (seen.length?`, ${seen.length} ${seen.length>1?"people":"person"} seen`:"")
-      + (mins?`, ${mins} min captured`:"") + ".";
-
-    app.innerHTML=`<div class="view view--wide review">
-      <span class="backlink" onclick="App.go('/')">← Today</span>
-      ${masthead({title:close+".", note:ed, wide:true})}
-      <div class="figrow">${ribbon}</div>
-      <div class="deck">
-        <div class="panel sp-7" id="rv-notes"><h2>Today's notes${notes.length?`<span class="hcount">${notes.length}</span>`:""}</h2>${notesHTML}</div>
-        <div class="panel sp-5" id="rv-replies"><h2>Replies${owe.length?`<span class="hcount">${owe.length}</span>`:""}</h2>${repliesHTML}</div>
-        <div class="panel sp-7" id="rv-todos"><h2>Open to-dos${tasks.length?`<span class="hcount">${tasks.length}</span>`:""}</h2>${todosHTML}</div>
-        <div class="panel sp-5" id="rv-people"><h2>People seen${seen.length?`<span class="hcount">${seen.length}</span>`:""}</h2>${peopleHTML}</div>
-      </div>
-      <div class="reviewclose"><b>${close}.</b><br>${closing}${hr>=18?" Rest well.":""}</div>
-    </div>`;
-    paintDone();
-    bindBrief();
-    app.querySelectorAll(".statcard[data-to]").forEach(s=>s.onclick=()=>{
-      const el=document.getElementById(s.dataset.to); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); });
+    if (!cache.length){ try { cache=await api("/api/recordings"); } catch(e){ return authOrError(e,showSearch); } }
+    app.innerHTML=`<div class="view">
+      <div class="searchwrap"><span class="mag">⌕</span>
+        <input id="q" placeholder="Search conversations, topics, ideas…" autofocus></div>
+      <div id="results" class="feed"></div><div id="hint" class="empty" style="padding:36px"></div></div>`;
+    const q=document.getElementById("q"), results=document.getElementById("results"), hint=document.getElementById("hint");
+    const run=()=>{ const term=q.value.trim().toLowerCase();
+      if (!term){ results.innerHTML=""; hint.textContent="Type to search your memories."; return; }
+      const hits=cache.filter(r=>JSON.stringify([r.headline,r.summary,(r.topics||[]).join(" ")]).toLowerCase().includes(term));
+      hint.textContent=hits.length?"":"No matches.";
+      results.innerHTML=hits.map(cardHTML).join("");
+      results.querySelectorAll(".rcard").forEach(c=>c.onclick=()=>go("/r/"+c.dataset.id)); };
+    q.oninput=run; run();
   }
 
   // ===== PEOPLE (relationships over time) =====
@@ -907,9 +626,6 @@ const App = (() => {
   const trendWord = (t)=> t==="warming"?"↗ warming":t==="cooling"?"↘ cooling":"→ steady";
   const dateShort = (iso)=>{ if(!iso) return ""; const d=new Date(iso);
     return d.toLocaleDateString(undefined,{month:"short",day:"numeric"}); };
-  const pInitials = (name)=>{ const p=String(name||"?").trim().split(/\s+/);
-    return ((((p[0]||"")[0]||"")+((p[1]||"")[0]||"")).toUpperCase())||"?"; };
-  const daysSince = (iso)=> iso ? (Date.now()-new Date(iso))/86400000 : 1e9;
   function valBar(p){ const tot=(p.positive||0)+(p.negative||0)+(p.neutral||0);
     if(!tot) return `<div class="vbar empty"></div>`;
     const w=(n)=>(100*n/tot).toFixed(1)+"%";
@@ -919,24 +635,6 @@ const App = (() => {
       <span style="width:${w(p.negative)};background:var(--ten)"></span></div>`; }
 
   let pplCache=[], dirCache=[], peopleMode="rel", selMode=false, sel=new Set(), suggestions=null;
-  let peopleFilter="all";
-  const PEOPLE_GROUPS=[
-    {k:"watch", label:"Needs care", test:p=>p.tone==="strained"||p.tone==="mixed"||p.trend==="cooling"},
-    {k:"warm",  label:"Warm",       test:p=>!(p.tone==="strained"||p.tone==="mixed"||p.trend==="cooling") && p.tone==="warm"},
-    {k:"steady",label:"Steady",     test:p=>!(p.tone==="strained"||p.tone==="mixed"||p.trend==="cooling") && p.tone!=="warm"},
-  ];
-  function nudgeRow(p){
-    const col=`var(--${toneClass(p.tone)})`;
-    const why=p.trend==="cooling"?"Cooling lately":`Last talked ${dateShort(p.last_seen)}`;
-    return `<div class="owerow" data-key="${attr(p.key)}" style="--mc:${col}">
-      <div class="ow-l">
-        <div class="ow-name">${h(p.name)}</div>
-        <div class="ow-sit">${h(why)}${p.role?` · ${h(p.role)}`:""}</div>
-      </div>
-      <span class="ow-t">${h(dateShort(p.last_seen))}</span>
-      <button class="cta line" data-open="${attr(p.key)}">Open &rarr;</button>
-    </div>`;
-  }
   const peopleSeg=()=>`<div class="segtoggle" id="pseg">
       <button data-pm="rel" class="${peopleMode==="rel"?"on":""}">Relationships</button>
       <button data-pm="dir" class="${peopleMode==="dir"?"on":""}">Directory</button></div>`;
@@ -945,8 +643,7 @@ const App = (() => {
 
   async function showPeople(){
     peopleMode="rel";
-    app.innerHTML=`<div class="view people-board">${masthead({title:"People"})}${peopleSeg()}
-      <div class="figrow">${Array(5).fill('<div class="statcard"><span class="figure">·</span></div>').join("")}</div>${skeletons(3)}</div>`;
+    app.innerHTML=`<div class="view"><div class="hero"><h1>People</h1></div>${peopleSeg()}${skeletons(3)}</div>`;
     bindSeg();
     let ppl; try { ppl=await api("/api/people"); } catch(e){ return authOrError(e,showPeople); }
     pplCache=ppl; renderPeople();
@@ -954,8 +651,7 @@ const App = (() => {
 
   async function showDirectory(){
     peopleMode="dir"; selMode=false; sel.clear();
-    app.innerHTML=`<div class="view people-board">${masthead({title:"People"})}${peopleSeg()}
-      <div class="figrow stats-static">${Array(4).fill('<div class="statcard"><span class="figure">·</span></div>').join("")}</div>${skeletons(3)}</div>`;
+    app.innerHTML=`<div class="view"><div class="hero"><h1>People</h1></div>${peopleSeg()}${skeletons(3)}</div>`;
     bindSeg();
     let dir; try { dir=await api("/api/directory"); } catch(e){ return authOrError(e,showDirectory); }
     dirCache=dir; renderDirectory();
@@ -963,39 +659,26 @@ const App = (() => {
 
   function renderDirectory(){
     const dir=dirCache;
-    const known   = dir.filter(e=>e.recognition!=="new").length;
-    const learning= dir.filter(e=>e.recognition==="learning").length;
-    const voiced  = dir.filter(e=>e.has_voice).length;
-    setSubline(dir.length?`${dir.length} learned`:"directory");
-    const ed = dir.length
-      ? `Lucid is learning <b>${dir.length}</b> ${dir.length===1?"voice":"voices"} — ${known} recognized, ${voiced} with a voiceprint.`
-      : "As recordings come in, Lucid learns each person's voice and way of speaking.";
-    const figs=[
-      {n:dir.length, c:"Known"},
-      {n:known,      c:"Recognized", col:"var(--pos)"},
-      {n:learning,   c:"Learning",   col:"var(--accent)"},
-      {n:voiced,     c:"Voiceprints",col:"var(--decision)"},
-    ];
-    const ribbon=figs.map(f=>`<div class="statcard" style="--mc:${f.col||"var(--ink)"};--domain:${f.col||"var(--ink)"}">
-      <span class="figure">${f.n}</span><span class="figcap">${h(f.c)}</span></div>`).join("");
-
+    document.getElementById("subline").textContent = dir.length?`${dir.length} learned`:"directory";
+    const known=dir.filter(e=>e.recognition!=="new").length;
+    const intro=`<div class="hero"><h1>People</h1>
+      <div class="stats"><span><b>${dir.length}</b> known</span>
+        <span><b>${known}</b> recognized</span></div></div>`;
     let body;
     if(!dir.length){
       body=`<div class="empty"><div class="big">&#9737;</div>Nothing learned yet.
         <div class="hint">As recordings come in, Lucid learns each person's voice and way
         of speaking — and remembers every name you set.</div></div>`;
     } else {
-      body=`<div class="feed">${dir.map(e=>{
+      body=dir.map(e=>{
         const words=(e.top_words||[]).slice(0,8).map(w=>`<span class="word">${h(w)}</span>`).join("");
         const phr=(e.phrases||[]).map(p=>`<div class="dirphrase">&ldquo;${h(p)}&rdquo;</div>`).join("");
         const al=(e.aliases||[]).length?`<div class="aliasrow">${e.aliases.map(a=>`<span class="aliaschip">aka ${h(a)}</span>`).join("")}</div>`:"";
         const voice=e.has_voice?`<span>&#127908; voice &times;${e.voice_samples}</span>`:"";
-        const col=e.recognition==="strong"?"var(--pos)":e.recognition==="learning"?"var(--accent)":"var(--neu)";
-        return `<div class="dircard" data-id="${attr(e.id)}" style="--mc:${col}">
-          <div class="dirtop"><div class="tile mono"><span>${h(pInitials(e.name))}</span></div>
-            <div class="dirid"><div class="nm">${h(e.name)}</div>
-              ${e.role?`<div class="snip">${h(e.role)}</div>`:""}</div>
+        return `<div class="dircard" data-id="${attr(e.id)}">
+          <div class="dirtop"><div class="nm">${h(e.name)}</div>
             <span class="recbadge ${e.recognition}">${e.recognition}</span></div>
+          ${e.role?`<div class="snip" style="color:var(--muted);font-size:14px;margin-top:3px">${h(e.role)}</div>`:""}
           ${al}
           <div class="dirmeta"><span><b>${e.seen_count}</b> conversation${e.seen_count===1?"":"s"}</span>
             ${e.corrections?`<span><b>${e.corrections}</b> correction${e.corrections===1?"":"s"}</span>`:""}
@@ -1004,14 +687,9 @@ const App = (() => {
           ${phr?`<div class="dirsec"><div class="lbl">Things they've said</div>${phr}</div>`:""}
           <button class="dirforget" data-forget="${attr(e.id)}">Forget this person</button>
         </div>`;
-      }).join("")}</div>`;
+      }).join("");
     }
-    app.innerHTML=`<div class="view people-board">
-      ${masthead({title:`People <span class="count">${dir.length} learned</span>`, note:ed})}
-      ${peopleSeg()}
-      <div class="figrow stats-static">${ribbon}</div>
-      ${body}</div>`;
-    paintDone();
+    app.innerHTML=`<div class="view">${intro}${peopleSeg()}${body}</div>`;
     bindSeg();
     app.querySelectorAll("[data-forget]").forEach(b=>b.onclick=async()=>{
       if(!confirm("Forget everything learned about this person? (their recordings stay)")) return;
@@ -1021,19 +699,18 @@ const App = (() => {
   }
 
   function pcardHTML(p){
-    const col=`var(--${toneClass(p.tone)})`;
-    const nat=(p.natures||[]).slice(0,2).map(n=>`<span class="chip">${h(n)}</span>`).join("");
+    const nat=(p.natures||[]).slice(0,3).map(n=>`<span class="chip">${h(n)}</span>`).join("");
     const checked=sel.has(p.key);
     const box=selMode?`<span class="pcheck${checked?" on":""}">${checked?"&#10003;":""}</span>`:"";
-    return `<div class="rcard pcard${selMode?" selmode":""}${checked?" picked":""}" data-key="${attr(p.key)}" style="--mc:${col}">
-      ${box}<div class="tile mono"><span>${h(pInitials(p.name))}</span></div>
+    return `<div class="pcard${selMode?" selmode":""}${checked?" picked":""}" data-key="${attr(p.key)}" style="--mc:var(--${toneClass(p.tone)})">
+      ${box}${ringHTML(`var(--${toneClass(p.tone)})`,72,"&#9737;")}
       <div class="rbody">
         <h3>${h(p.name)} <span class="pcount">&times;${p.interactions}</span></h3>
         ${p.role?`<div class="snip">${h(p.role)}</div>`:""}
         ${valBar(p)}
         <div class="rmeta">
           <span class="chip mood">${toneWord(p.tone)}</span>
-          <span class="chip trend">${trendWord(p.trend)}</span>
+          <span class="chip">${trendWord(p.trend)}</span>
           ${nat}
           <span class="time">${h(rel(p.last_seen))}</span>
         </div></div></div>`;
@@ -1041,46 +718,8 @@ const App = (() => {
 
   function renderPeople(){
     const ppl=pplCache;
+    document.getElementById("subline").textContent = ppl.length?`${ppl.length} relationship${ppl.length>1?"s":""}`:"relationships";
     const nameOf=(k)=>(ppl.find(p=>p.key===k)||{}).name||k;
-
-    const watch  = ppl.filter(PEOPLE_GROUPS[0].test).length;
-    const warm   = ppl.filter(PEOPLE_GROUPS[1].test).length;
-    const steady = ppl.filter(PEOPLE_GROUPS[2].test).length;
-    const nudge  = ppl.filter(p=>p.trend==="cooling"||daysSince(p.last_seen)>30)
-                      .sort((a,b)=>new Date(a.last_seen||0)-new Date(b.last_seen||0)).slice(0,8);
-
-    if(!ppl.length){
-      setSubline("relationships");
-      app.innerHTML=`<div class="view people-board">
-        ${masthead({title:"People", note:"Your relationships, gathered from every conversation."})}
-        ${peopleSeg()}
-        <div class="empty"><div class="big">&#9737;</div>No people yet.
-          <div class="hint">As you record conversations, the people in them — and how
-          your relationships evolve — gather here.</div></div></div>`;
-      bindSeg(); paintDone(); return;
-    }
-
-    const bits=[];
-    if(warm)         bits.push(`<b>${warm}</b> warm`);
-    if(watch)        bits.push(`<b>${watch}</b> need${watch===1?"s":""} care`);
-    if(nudge.length) bits.push(`<b>${nudge.length}</b> to reconnect`);
-    const ed=bits.length?bits.join(" · ")+".":"Your roster is calm — nothing needs a nudge.";
-    setSubline(`${ppl.length} relationship${ppl.length>1?"s":""}${nudge.length?` · ${nudge.length} to reconnect`:""}`);
-
-    const figs=[
-      {n:ppl.length,  c:"People",     col:"var(--ink)",    f:"all"},
-      {n:warm,        c:"Warm",       col:"var(--pos)",    f:"warm"},
-      {n:steady,      c:"Steady",     col:"var(--neu)",    f:"steady"},
-      {n:watch,       c:"Needs care", col:"var(--ten)",    f:"watch"},
-      {n:nudge.length,c:"Reconnect",  col:"var(--accent)", scroll:"nudgelane"},
-    ];
-    const ribbon=figs.map(f=>`<button class="statcard${(!f.scroll&&peopleFilter===f.f)?" on":""}"
-      ${f.scroll?`data-scroll="${f.scroll}"`:`data-f="${f.f}"`} style="--mc:${f.col};--domain:${f.col}">
-      <span class="figure">${f.n}</span><span class="figcap">${f.c}</span></button>`).join("");
-
-    const nudgeHTML=nudge.length?`<div class="owelane" id="nudgelane">
-      <div class="lanehead">Reconnect <span class="n">${nudge.length}</span></div>
-      ${nudge.map(nudgeRow).join("")}</div>`:"";
 
     let sugHTML="";
     if (suggestions){
@@ -1094,41 +733,30 @@ const App = (() => {
           <p class="muted" style="font-size:14px;margin:0">No likely duplicates found — your roster looks clean.</p></div>`;
     }
 
-    const tools=`<div class="ptools">
-        <button class="btn ghost" id="findDup">&#10022; Find duplicates</button>
-        <button class="btn ghost" id="selBtn">${selMode?"Done":"Select"}</button>
-      </div>`;
-
-    const groups=peopleFilter==="all"?PEOPLE_GROUPS:PEOPLE_GROUPS.filter(g=>g.k===peopleFilter);
-    const sections=groups.map(g=>{
-      const list=ppl.filter(g.test);
-      if(!list.length) return "";
-      return `<div class="daygroup people-group"><div class="daylabel">${g.label}<span class="n">${list.length}</span></div>
-        <div class="feed">${list.map(pcardHTML).join("")}</div></div>`;
-    }).join("");
-
-    app.innerHTML=`<div class="view people-board">
-      ${masthead({title:`People <span class="count">${ppl.length}</span>`, note:ed})}
-      ${peopleSeg()}
-      <div class="figrow">${ribbon}</div>
-      ${nudgeHTML}
-      ${tools}${sugHTML}
-      ${sections||`<div class="empty"><div class="big">&#9737;</div>Nothing in this view.</div>`}
+    let body;
+    if(!ppl.length){
+      body=`<div class="empty"><div class="big">&#9737;</div>No people yet.
+        <div class="hint">As you record conversations, the people in them — and how
+        your relationships evolve — gather here.</div></div>`;
+    } else {
+      body=`<div class="ptools">
+          <button class="btn ghost" id="findDup">&#10022; Find duplicates</button>
+          <button class="btn ghost" id="selBtn">${selMode?"Done":"Select"}</button>
+        </div>${sugHTML}
+        <div class="feed">${ppl.map(pcardHTML).join("")}</div>`;
+    }
+    app.innerHTML=`<div class="view"><div class="hero"><h1>People</h1>
+      <div class="stats"><span><b>${ppl.length}</b> ${ppl.length===1?"person":"people"} across your recordings</span></div>
+      </div>${peopleSeg()}${body}
       ${selMode&&sel.size?`<div class="selbar"><span>${sel.size} selected</span>
         <button class="btn" id="combineBtn" ${sel.size<2?"disabled":""}>Combine</button>
         <button class="btn ghost" id="deleteBtn">Delete</button></div>`:""}</div>`;
-    paintDone();
     bindSeg();
-    app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{peopleFilter=b.dataset.f;renderPeople();});
-    const scb=app.querySelector('.statcard[data-scroll]');
-    if(scb) scb.onclick=()=>{const el=document.getElementById(scb.dataset.scroll); if(el) el.scrollIntoView({behavior:"smooth",block:"start"});};
     app.querySelectorAll(".pcard").forEach(c=>c.onclick=()=>{
       const k=c.dataset.key;
       if(selMode){ sel.has(k)?sel.delete(k):sel.add(k); renderPeople(); }
       else go("/people/"+encodeURIComponent(k));
     });
-    app.querySelectorAll(".owerow").forEach(r=>r.onclick=()=>go("/people/"+encodeURIComponent(r.dataset.key)));
-    app.querySelectorAll(".owerow .cta[data-open]").forEach(b=>b.onclick=(e)=>{e.stopPropagation();go("/people/"+encodeURIComponent(b.dataset.open));});
     const sb=document.getElementById("selBtn"); if(sb) sb.onclick=()=>{ selMode=!selMode; if(!selMode) sel.clear(); renderPeople(); };
     const fd=document.getElementById("findDup"); if(fd) fd.onclick=findDuplicates;
     const cb=document.getElementById("combineBtn"); if(cb) cb.onclick=doCombine;
@@ -1168,11 +796,8 @@ const App = (() => {
   }
 
   async function showPerson(key){
-    app.innerHTML=`<div class="view detail person-dossier view--wide">
-      <span class="backlink" onclick="App.go('/people')">&larr; People</span>${skeletons(2)}</div>`;
+    app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/people')">&larr; People</span>${skeletons(2)}</div>`;
     let p; try { p=await api("/api/people/"+encodeURIComponent(key)); } catch(e){ return authOrError(e,()=>showPerson(key)); }
-    const col=`var(--${toneClass(p.tone)})`;
-    setSubline(p.name||"People");
     const span = p.first_seen===p.last_seen ? dateShort(p.first_seen)
       : `${dateShort(p.first_seen)} – ${dateShort(p.last_seen)}`;
     const natures=(p.natures||[]).map(n=>`<span class="chip">${h(n)}</span>`).join("");
@@ -1182,19 +807,7 @@ const App = (() => {
       : p.tone==="strained" ? "Has carried recurring tension."
       : "Steady across your conversations.";
 
-    const tot=(p.positive||0)+(p.negative||0)+(p.neutral||0);
-    const warmPct=tot?Math.round(100*(p.positive||0)/tot):0;
-    const figs=[
-      {n:p.interactions,                c:"Conversations", col:"var(--ink)"},
-      {n:p.positive||0,                 c:"Positive",      col:"var(--pos)"},
-      {n:p.negative||0,                 c:"Concerning",    col:"var(--ten)"},
-      {n:`${warmPct}<small>%</small>`,  c:"Warm share",    col:col},
-    ];
-    const ribbon=figs.map(f=>`<div class="statcard" style="--mc:${f.col};--domain:${f.col}">
-      <span class="figure">${f.n}</span><span class="figcap">${h(f.c)}</span></div>`).join("");
-
     const tl = (p.timeline||[]).map(i=>{
-      const ic=mood({sentiment:i.sentiment,headline:i.headline}).c;
       const rels=(i.relationship||[]).map(r=>`<div class="reldyn">
           <div class="top">${r.with_self?`<span class="rpeople">you &amp; ${h(p.name)}</span>`:r.with?`<span class="rpeople">${h(p.name)} &amp; ${h(r.with)}</span>`:""}
             ${r.nature?`<span class="rnat">${h(r.nature)}</span>`:""}</div>
@@ -1206,199 +819,92 @@ const App = (() => {
       const pc=[...(i.plans||[]).map(x=>`<div class="lineitem"><span class="li-ic plan">&#9719;</span><span>${h(x.text)}</span></div>`),
                 ...(i.commitments||[]).map(x=>`<div class="lineitem"><span class="li-ic commit">&#10003;</span><span>${h(x.text)}</span></div>`)].join("");
       return `<div class="tinter" data-rid="${i.rec_id}">
-        <div class="tdate" style="--tlc:${ic}">${dateShort(i.date)}</div>
-        <div class="tcard" style="--tlc:${ic}">
+        <div class="tdate">${dateShort(i.date)}</div>
+        <div class="tcard">
           <h3>${h(i.headline)} <span class="chev">&rsaquo;</span></h3>
           ${i.role?`<div class="prole">${h(i.role)}</div>`:""}
           ${rels}${psy}${qs}${pc}
           ${i.sentiment?`<div class="arc">&#9709; ${h(i.sentiment)}</div>`:""}
         </div></div>`;}).join("");
 
-    const allQuotes=(p.timeline||[]).flatMap(i=>(i.quotes||[])).slice(0,4);
-    const quotesPanel=allQuotes.length?`<div class="panel"><h2>Notable quotes</h2>
-      ${allQuotes.map(q=>`<div class="pquote">&ldquo;${h(q.text)}&rdquo;${q.significance?`<span class="qsig">${h(q.significance)}</span>`:""}</div>`).join("")}</div>`:"";
-
-    app.innerHTML=`<div class="view detail person-dossier view--wide" style="--mc:${col}">
+    app.innerHTML=`<div class="view" style="--mc:var(--${toneClass(p.tone)})">
       <span class="backlink" onclick="App.go('/people')">&larr; People</span>
-      <div class="dhero">${ringHTML(col,100,h(pInitials(p.name)))}
+      <div class="dhero">${ringHTML(`var(--${toneClass(p.tone)})`,72,"&#9737;")}
         <div><h1>${h(p.name)}</h1>
           <div class="dmeta"><span class="mc">${toneWord(p.tone)}</span>
             <span>&middot; ${trendWord(p.trend)}</span>
             <span>&middot; ${p.interactions} conversation${p.interactions>1?"s":""}</span>
             <span>&middot; ${span}</span></div></div></div>
-      <div class="figrow stats-static">${ribbon}</div>
-      <p class="lead">${arc}</p>
-      <div class="dossier">
-        <div class="dcol">
-          <div class="panel"><h2>The relationship</h2>
-            ${valBar(p)}
-            <div class="vkey"><span><i style="background:var(--pos)"></i>${p.positive} positive</span>
-              <span><i style="background:var(--ten)"></i>${p.negative} concerning</span>
-              <span><i style="background:var(--neu)"></i>${p.neutral} neutral</span></div>
-            ${p.roles&&p.roles.length?`<div class="prole">${h(p.roles[0])}</div>`:""}
-            ${natures?`<div class="chips" style="margin-top:12px">${natures}</div>`:""}</div>
-          ${quotesPanel}
-        </div>
-        <div class="dcol">
-          <div class="panel"><h2>Conversations${p.interactions?`<span class="hcount">${p.interactions}</span>`:""}</h2>
-            <div class="timeline-people crmtl">${tl||`<div class="muted" style="font-size:14px">No history yet.</div>`}</div></div>
-        </div>
-      </div></div>`;
-    paintDone();
+      <div class="panel"><h2>The relationship</h2>
+        <p class="lead">${arc}</p>
+        ${valBar(p)}
+        <div class="vkey"><span><i style="background:var(--pos)"></i>${p.positive} positive</span>
+          <span><i style="background:var(--ten)"></i>${p.negative} concerning</span>
+          <span><i style="background:var(--neu)"></i>${p.neutral} neutral</span></div>
+        ${p.roles&&p.roles.length?`<div class="prole">${h(p.roles[0])}</div>`:""}
+        ${natures?`<div class="chips" style="margin-top:10px">${natures}</div>`:""}</div>
+      <div class="panel"><h2>Over time &middot; ${p.interactions} interaction${p.interactions>1?"s":""}</h2>
+        <div class="timeline-people">${tl}</div></div></div>`;
     app.querySelectorAll(".tinter").forEach(c=>c.onclick=()=>go("/r/"+c.dataset.rid));
   }
 
-  // ===== IDEAS (business ideas → build specs) =====
-  let venData=null, venFilter="all";
-
-  function ventureColor(v){ const t=(v.status||"").toLowerCase();
-    if(/(built|launch|ship|live|active|building|in progress|agreed|approv|greenlit|go\b)/.test(t)) return "var(--pos)";
-    if(/(reject|dead|parked|dropped|killed|on hold|shelved|abandon|backlog|someday)/.test(t)) return "var(--neu)";
-    if(/(risk|blocked|concern|stuck)/.test(t)) return "var(--ten)";
-    return "var(--topic)"; }
-
-  function stanceColor(st){ const s=(st||"").toLowerCase();
-    if(/(support|propos|agree|for\b|yes|champion)/.test(s)) return "var(--pos)";
-    if(/(against|reject|oppos|\bno\b|block)/.test(s)) return "var(--ten)";
-    if(/(skeptic|concern|refine|caution|unsure|wary|question)/.test(s)) return "var(--accent)";
-    return "var(--neu)"; }
-
-  function ventureCard(v){
-    const col=ventureColor(v);
-    const ppl=(v.people||[]).slice(0,2).map(p=>`<span class="chip">${h(p)}</span>`).join("");
-    return `<div class="rcard idea-card" data-id="${attr(v.id)}" style="--mc:${col}">
-      <div class="tile mono"><span>&#9670;</span></div>
-      <div class="rbody">
-        <h3>${h(v.title)}</h3>
-        ${v.summary?`<div class="snip">${h(v.summary)}</div>`:""}
-        <div class="rmeta">
-          ${v.has_spec?`<span class="chip draftready">&#10003; build plan</span>`:`<span class="chip stage">no plan yet</span>`}
-          ${v.status?`<span class="chip stage">${h(v.status)}</span>`:""}
-          ${ppl}
-          ${v.mentions>1?`<span class="chip">${v.mentions}&times; discussed</span>`:""}
-        </div></div></div>`;
-  }
-
+  // ===== VENTURES (business ideas → build specs) =====
   async function showVentures(){
-    app.innerHTML=`<div class="view view--wide">${masthead({title:"Ideas",wide:true})}
-      <div class="figrow">${Array(3).fill('<div class="statcard"><span class="figure">&middot;</span></div>').join("")}</div>
-      ${skeletons(3)}</div>`;
+    app.innerHTML=`<div class="view"><div class="hero"><h1>Ventures</h1></div>${skeletons(3)}</div>`;
     let vs; try{ vs=await api("/api/ventures"); }catch(e){ return authOrError(e,showVentures); }
-    venData=vs; paintVentures();
-  }
-
-  function paintVentures(){
-    const vs=venData||[];
-    const planned=vs.filter(v=>v.has_spec), unplanned=vs.filter(v=>!v.has_spec);
-    setSubline(vs.length?`${vs.length} idea${vs.length>1?"s":""}${unplanned.length?` &middot; ${unplanned.length} to develop`:""}`:"ideas");
-
+    document.getElementById("subline").textContent = vs.length?`${vs.length} idea${vs.length>1?"s":""}`:"ventures";
+    let body;
     if(!vs.length){
-      app.innerHTML=`<div class="view view--wide">
-        ${masthead({title:"Ideas",wide:true,note:"Brainstorms from your recordings gather here &mdash; each becomes a buildable plan."})}
-        <div class="empty"><div class="big">&#9670;</div>No business ideas yet.
-          <div class="hint">When you and the people around you brainstorm in a recording,
-          the ideas collect here &mdash; each with a full build plan, ready to hand to Claude Code.</div></div></div>`;
-      paintDone(); return;
+      body=`<div class="empty"><div class="big">&#9650;</div>No business ideas yet.
+        <div class="hint">When you and the people around you brainstorm in a recording,
+        the ventures gather here — each with a full build plan.</div></div>`;
+    } else {
+      body=`<div class="feed">${vs.map(v=>`<div class="vcard" data-id="${attr(v.id)}">
+        <div class="vbody">
+          <div class="vtop"><h3>${h(v.title)}</h3>${v.has_spec?`<span class="vspec">plan ✓</span>`:""}</div>
+          ${v.summary?`<div class="snip">${h(v.summary)}</div>`:""}
+          <div class="rmeta">
+            ${v.status?`<span class="chip">${h(v.status)}</span>`:""}
+            ${(v.people||[]).slice(0,3).map(p=>`<span class="chip">${h(p)}</span>`).join("")}
+            ${v.mentions>1?`<span class="chip">${v.mentions}× discussed</span>`:""}
+          </div></div></div>`).join("")}</div>`;
     }
-
-    const bits=[`<b>${vs.length}</b> idea${vs.length>1?"s":""} on the table`];
-    if(planned.length)   bits.push(`<b>${planned.length}</b> with a build plan`);
-    if(unplanned.length) bits.push(`<b>${unplanned.length}</b> awaiting one`);
-    const ed=bits.join(" &middot; ")+".";
-
-    const figs=[
-      {n:vs.length,        c:"Ideas",       col:"var(--topic)",  f:"all"},
-      {n:planned.length,   c:"With a plan", col:"var(--pos)",    f:"planned"},
-      {n:unplanned.length, c:"Need a plan", col:"var(--accent)", f:"unplanned"},
-    ];
-    const ribbon=figs.map(f=>`<button class="statcard${venFilter===f.f?" on":""}" data-f="${f.f}" style="--mc:${f.col}">
-      <span class="figure">${f.n}</span><span class="figcap">${f.c}</span></button>`).join("");
-
-    const lane=(unplanned.length&&venFilter!=="planned")?`<div class="owelane" id="developlane">
-      <div class="lanehead">Develop next <span class="n">${unplanned.length}</span></div>
-      ${unplanned.slice(0,5).map(v=>`<div class="owerow" data-id="${attr(v.id)}" style="--mc:${ventureColor(v)}">
-        <div class="ow-l"><div class="ow-name">${h(v.title)}</div>
-          <div class="ow-sit">${h(v.summary||"No build plan yet — generate one from the discussion.")}</div></div>
-        <span class="ow-t">${v.mentions>1?`${v.mentions}× discussed`:"new"}</span>
-        <button class="cta line" data-open="${attr(v.id)}">Build plan &rarr;</button>
-      </div>`).join("")}</div>`:"";
-
-    const GROUPS=[
-      {k:"unplanned", label:"Needs a build plan", list:unplanned},
-      {k:"planned",   label:"Has a build plan",   list:planned},
-    ];
-    const groups=(venFilter==="all"?GROUPS:GROUPS.filter(g=>g.k===venFilter))
-      .filter(g=>g.list.length)
-      .map(g=>`<div class="daygroup crm-group"><div class="daylabel">${g.label}<span class="n">${g.list.length}</span></div>
-        <div class="feed">${g.list.map(ventureCard).join("")}</div></div>`).join("");
-
-    app.innerHTML=`<div class="view view--wide idea-board">
-      ${masthead({title:"Ideas",wide:true,note:ed})}
-      <div class="figrow">${ribbon}</div>
-      ${lane}
-      ${groups||`<div class="empty"><div class="big">&#9676;</div>Nothing in this view.</div>`}</div>`;
-    paintDone();
-
-    app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{ venFilter=b.dataset.f; paintVentures(); });
-    app.querySelectorAll(".idea-card").forEach(c=>c.onclick=()=>go("/ventures/"+encodeURIComponent(c.dataset.id)));
-    app.querySelectorAll(".owerow").forEach(r=>r.onclick=()=>go("/ventures/"+encodeURIComponent(r.dataset.id)));
-    app.querySelectorAll(".owerow .cta[data-open]").forEach(b=>b.onclick=(e)=>{e.stopPropagation();go("/ventures/"+encodeURIComponent(b.dataset.open));});
+    app.innerHTML=`<div class="view"><div class="hero"><div class="greeting">Your ideas, made buildable</div>
+      <h1>Ventures <span class="count">(${vs.length})</span></h1></div>${body}</div>`;
+    app.querySelectorAll(".vcard").forEach(c=>c.onclick=()=>go("/ventures/"+encodeURIComponent(c.dataset.id)));
   }
 
   async function showVenture(id){
-    app.innerHTML=`<div class="view detail view--wide"><span class="backlink" onclick="App.go('/ventures')">&larr; Ideas</span>${skeletons(2)}</div>`;
+    app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/ventures')">← Ventures</span>${skeletons(2)}</div>`;
     let v; try{ v=await api("/api/ventures/"+encodeURIComponent(id)); }catch(e){ return authOrError(e,()=>showVenture(id)); }
     renderVenture(v);
   }
 
   function renderVenture(v){
-    const col=ventureColor(v);
-    setSubline(v.title||"Idea");
-    const srcN=(v.sources||[]).length, voices=(v.perspectives||[]).length;
-    const persp=(v.perspectives||[]).map(p=>{ const ss=(p.stance||"").replace(/\s+/g,"-");
-      return `<div class="persp" style="--mc:${stanceColor(p.stance)}"><span class="persp-dot"></span>
-        <div><span class="persp-n">${h(p.person)}</span>${p.stance?`<span class="persp-s s-${h(ss)}">${h(p.stance)}</span>`:""}
-        <div class="persp-v">${h(p.view)}</div></div></div>`; }).join("");
+    const persp=(v.perspectives||[]).map(p=>{const ss=(p.stance||"").replace(/\s+/g,"-"); return `<div class="persp">
+      <span class="persp-n">${h(p.person)}</span>${p.stance?`<span class="persp-s s-${h(ss)}">${h(p.stance)}</span>`:""}
+      <div class="persp-v">${h(p.view)}</div></div>`;}).join("");
     const srcs=(v.sources||[]).map(s=>`<span class="vsrc" data-rid="${s.rec_id}">${h(s.headline||"recording")}</span>`).join("");
     const spec=v.spec;
-    const via=(spec&&spec.viability&&typeof spec.viability==="object")?spec.viability:{};
-
-    const figs=[
-      {n:srcN||1, c:srcN===1?"Mention":"Mentions", col:"var(--topic)"},
-      {n:voices,  c:voices===1?"Voice":"Voices",    col:"var(--accent)"},
-      via.score!=null
-        ? {n:`${h(String(via.score))}<small>/10</small>`, c:"Viability", col:"var(--pos)"}
-        : {n:v.has_spec?"&#10003;":"&mdash;", c:v.has_spec?"Has plan":"No plan", col:v.has_spec?"var(--pos)":"var(--neu)"},
-    ];
-    const ribbon=figs.map(f=>`<div class="statcard" style="--mc:${f.col}">
-      <span class="figure">${f.n}</span><span class="figcap">${h(f.c)}</span></div>`).join("");
-
-    const ideaPanel=`<div class="panel"><h2>The idea</h2>
-      ${v.summary?`<p class="lead">${h(v.summary)}</p>`:""}
-      ${v.details?`<div class="idea-d">${h(v.details)}</div>`:""}
-      ${srcs?`<div class="vsrcs">From ${srcs}</div>`:""}</div>`;
-    const perspPanel=persp?`<div class="panel"><h2>Around the table</h2><div class="idea-p">${persp}</div></div>`:"";
-
     const specBlock = spec ? renderSpec(v, spec) :
-      `<div class="panel vbuild" style="--mc:${col}"><h2>Build plan</h2>
-        <p class="muted" style="font-size:14px;margin-top:0;line-height:1.55">Turn this discussion into a complete, buildable spec &mdash;
-        stack, data model, features, roadmap, and first steps &mdash; predicted from what was said and
+      `<div class="panel vbuild"><h2>Build plan</h2>
+        <p class="muted" style="font-size:14px;margin-top:0">Generate a complete, buildable spec —
+        stack, data model, features, roadmap, and first steps — predicted from your discussion and
         ready to hand to Claude Code.</p>
-        <button class="btn" id="genBtn">&#10038; Generate build plan</button></div>`;
+        <button class="btn" id="genBtn">✦ Generate build plan</button></div>`;
 
-    app.innerHTML=`<div class="view detail view--wide idea-dossier" style="--mc:${col}">
-      <span class="backlink" onclick="App.go('/ventures')">&larr; Ideas</span>
-      <div class="dhero">${ringHTML(col,100,"&#9670;")}
+    app.innerHTML=`<div class="view">
+      <span class="backlink" onclick="App.go('/ventures')">← Ventures</span>
+      <div class="dhero"><div class="ring"><span class="glyph">▲</span></div>
         <div><h1>${h(v.title)}</h1>
-          <div class="dmeta"><span class="mc">${v.proposed_by?h(v.proposed_by):"Idea"}</span>
-            ${v.status?`<span>&middot; ${h(v.status)}</span>`:""}
-            <span>&middot; ${srcN||1} mention${(srcN||1)>1?"s":""}</span>
-            <span>&middot; ${v.has_spec?"build plan ready":"no plan yet"}</span></div></div></div>
-      <div class="figrow">${ribbon}</div>
-      <div class="dossier">
-        <div class="dcol">${ideaPanel}${perspPanel}</div>
-        <div class="dcol">${specBlock}</div>
-      </div></div>`;
+          <div class="dmeta">${v.proposed_by?`<span class="mc">${h(v.proposed_by)}</span>`:""}
+            ${v.status?`<span>· ${h(v.status)}</span>`:""}<span>· ${(v.sources||[]).length} mention${(v.sources||[]).length>1?"s":""}</span></div></div></div>
+      <div class="panel"><h2>The idea</h2>
+        ${v.summary?`<p class="lead">${h(v.summary)}</p>`:""}
+        ${v.details?`<div class="idea-d">${h(v.details)}</div>`:""}
+        ${persp?`<div class="idea-p">${persp}</div>`:""}
+        ${srcs?`<div class="vsrcs">From: ${srcs}</div>`:""}</div>
+      ${specBlock}</div>`;
 
     app.querySelectorAll(".vsrc").forEach(s=>s.onclick=()=>go("/r/"+s.dataset.rid));
     const gen=document.getElementById("genBtn"); if(gen) gen.onclick=()=>buildVenture(v.id, gen);
@@ -1414,7 +920,6 @@ const App = (() => {
   }
 
   function renderSpec(v, s){
-    const col=ventureColor(v);
     const A=(x)=>Array.isArray(x)?x:[];                 // tolerate any AI output shape
     const sec=(t,html)=> html?`<div class="vsec"><div class="vsec-h">${t}</div>${html}</div>`:"";
     const list=(a)=> A(a).length?`<ul class="vlist">${A(a).map(x=>`<li>${h(x)}</li>`).join("")}</ul>`:"";
@@ -1428,7 +933,7 @@ const App = (() => {
     const via=(s.viability&&typeof s.viability==="object")?s.viability:{};
     return `
       ${v.spec_stale?`<div class="vstale">The discussion changed since this plan. <span class="rebuildBtn">Refresh it →</span></div>`:""}
-      <div class="panel vplan" style="--mc:${col}"><h2>Build plan</h2>
+      <div class="panel vplan"><h2>Build plan</h2>
         ${s.one_liner?`<p class="lead">${h(s.one_liner)}</p>`:""}
         ${via.read?`<div class="vvia">${via.score!=null?`<span class="vscore">${h(String(via.score))}/10</span>`:""}${h(via.read)}</div>`:""}
         ${sec("Problem", p(s.problem))}${sec("Solution", p(s.solution))}
