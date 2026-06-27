@@ -27,11 +27,14 @@ const App = (() => {
   // relevance gate — Lucid records ALL audio (incl. audio dramas, therapy, social). By default
   // surface only work-signal: a business keyword AND no clear personal marker. Toggle to see all.
   const _BIZ_RE=/\b(ai|a\.i\.|claude|llm|agentic|agents?|automation|automate|consult\w*|clients?|project|software|saas|strateg\w*|campaign|integration|onboard\w*|contract\w*|invest\w*|funding|startup|founders?|business|proposal|pricing|launch\w*|marketing|sales|product\w*|deliverables?|contractor|demo|deal\b|revenue|partner\w*|pitch|investor\w*|roadmap|hire|hiring)\b/i;
-  const _PERSONAL_RE=/\b(audio drama|drama|fiction|scripted|screenplay|therapy|therapist|counsel\w*|story|teens?|kids?|child\w*|kiss|marry|dating|girlfriend|boyfriend|family|social|party|gossip|prank)\b/i;
+  const _PERSONAL_RE=/\b(audio drama|therapy|therapist|counsel\w*|screenplay|girlfriend|boyfriend|dating|kiss|marry|prank|bedtime|gossip)\b/i;
   let workOnly = localStorage.getItem("lucid_all") !== "1";
   const _wtxt=(r)=>((r&&r.headline)||"")+" "+((r&&r.summary)||"")+" "+(((r&&r.topics)||[]).join(" "));
   const recWork=(r)=>{ const t=_wtxt(r); return _BIZ_RE.test(t) && !_PERSONAL_RE.test(t); };
-  const aiWork=(t)=>{ const s=((t&&t.note_headline)||"")+" "+((t&&t.text)||""); return _BIZ_RE.test(s) && !_PERSONAL_RE.test(s); };
+  const aiWork=(t)=>{ const r=t&&cache.find(x=>x.id===t.note_id);
+    if(r) return recWork(r);
+    const s=((t&&t.note_headline)||"")+" "+((t&&t.text)||"");
+    return _BIZ_RE.test(s) && !_PERSONAL_RE.test(s); };
   const keepRec=(r)=> !workOnly || recWork(r);
   const keepAi=(t)=> !workOnly || aiWork(t);
   function bindWorkBtn(){
@@ -50,7 +53,9 @@ const App = (() => {
   const rel = (iso) => { if(!iso) return ""; const d=new Date(iso), diff=(Date.now()-d)/1000;
     if (diff<60) return "just now"; if (diff<3600) return `${Math.floor(diff/60)}m ago`;
     if (diff<86400) return `${Math.floor(diff/3600)}h ago`;
-    return d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); };
+    if (diff<7*86400) return `${Math.floor(diff/86400)}d ago`;
+    const sy=d.getFullYear()===new Date().getFullYear();
+    return d.toLocaleDateString(undefined,{month:"short",day:"numeric",...(sy?{}:{year:"numeric"})}); };
   const dayBucket = (iso) => { const d=new Date(iso); const now=new Date();
     const sd=(x)=>new Date(x.getFullYear(),x.getMonth(),x.getDate()).getTime();
     const days=Math.round((sd(now)-sd(d))/86400000);
@@ -438,7 +443,8 @@ const App = (() => {
 
   function paintNotes(){
     const recs=cache;
-    const done=recs.filter(r=>r.status==="done");
+    const shown=recs.filter(keepRec);                  // honor Work toggle in every count
+    const done=shown.filter(r=>r.status==="done");
     const mins=Math.round(done.reduce((a,r)=>a+(r.duration||0),0)/60);
     const tense=done.filter(r=>mood(r).k==="tense").length;
     const seen=new Set();
@@ -451,16 +457,16 @@ const App = (() => {
     if (homeSort==="oldest") list=[...list].reverse();
     else if (homeSort==="longest") list=[...list].sort((a,b)=>(b.duration||0)-(a.duration||0));
 
-    const bits=[`<b>${recs.length}</b> note${recs.length!==1?"s":""}`];
+    const bits=[`<b>${shown.length}</b> note${shown.length!==1?"s":""}`];
     if(mins)  bits.push(`<b>${mins}</b> min on the record`);
     if(tense) bits.push(`<b>${tense}</b> tense`);
     const ed = recs.length
       ? `Everything you've captured, sorted and ready — ${bits.join(" · ")}.`
       : "Record on your Plaud and your notes land here automatically — transcribed, summarised, sorted.";
-    setSubline(recs.length?`${recs.length} note${recs.length!==1?"s":""}${tense?` · ${tense} tense`:""}`:"notes");
+    setSubline(shown.length?`${shown.length} note${shown.length!==1?"s":""}${tense?` · ${tense} tense`:""}`:"notes");
 
     const figs=[
-      {n:recs.length, cap:"Notes",        col:"var(--ink)",      f:"all"},
+      {n:shown.length, cap:"Notes",        col:"var(--ink)",      f:"all"},
       {n:mins,        cap:"Min captured",  col:"var(--decision)", sort:"longest"},
       {n:tense,       cap:"Tense",         col:"var(--ten)",      f:"tense"},
       {n:ppl,         cap:"People seen",   col:"var(--accent)",   f:"people"},
@@ -476,8 +482,11 @@ const App = (() => {
       body=`<div class="empty"><div class="big">◐</div>No notes yet.
         <div class="hint">Record on your Plaud — your notes appear here automatically, sorted and ready.</div></div>`;
     } else if (!list.length){
-      body=`<div class="empty"><div class="big">◌</div>Nothing matches this filter.
-        <div class="hint">Try “All”.</div></div>`;
+      const hiddenN=recs.filter(ft.test).filter(r=>!keepRec(r)).length;
+      body = (workOnly && hiddenN)
+        ? `<div class="empty"><div class="big">◌</div>${hiddenN} note${hiddenN>1?"s":""} hidden by the Work filter.
+            <div class="hint"><button class="seeall" id="showAllNotes">Show all notes →</button></div></div>`
+        : `<div class="empty"><div class="big">◌</div>Nothing matches this filter.<div class="hint">Try “All”.</div></div>`;
     } else if (homeSort==="newest"){
       const groups={}; list.forEach(r=>{ const b=dayBucket(r.created_at)||"Earlier"; (groups[b]=groups[b]||[]).push(r); });
       const order=["Today","Yesterday","This week","This month","Earlier"];
@@ -507,6 +516,8 @@ const App = (() => {
     if(ms) ms.onclick=()=>{ homeSort = homeSort===ms.dataset.sort ? "newest" : ms.dataset.sort; paintNotes(); };
     app.querySelectorAll(".filterbar .fchip").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
     const ss=document.getElementById("sortSel"); if(ss) ss.onchange=()=>{ homeSort=ss.value; paintNotes(); };
+    const sa=document.getElementById("showAllNotes");
+    if(sa) sa.onclick=()=>{ workOnly=false; localStorage.setItem("lucid_all","1"); bindWorkBtn(); paintNotes(); };
   }
 
   function cardHTML(r){
@@ -569,7 +580,7 @@ const App = (() => {
   function needsYou(b){
     const out=[], seen=briefSeen(), dt=doneTodos();
     const clear=(msg)=>{ paintBrief(); toast(msg||"Marked read"); };
-    (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{ const d=!!c.draft, id="reply:"+c.email;
+    (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{ const d=!!c.draft, id="reply:"+c.email+":"+(c.last_ts||"");
       out.push({ id, domain:stageColor(c), mark:"✍", sort:d?0:1,
         kind:d?"Draft ready":(c.action==="follow_up"?"Follow up":"Reply"),
         title:c.name||c.company||c.email, sub:c.situation||c.summary||"",
@@ -578,26 +589,27 @@ const App = (() => {
     (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&keepRec(r)).slice(0,4).forEach(r=>{ const id="tense:"+r.id;
       out.push({ id, domain:"var(--ten)", mark:"⚠", sort:2, kind:"Tense note",
         title:r.headline||"Conversation", sub:r.summary||"", cta:"Review", go:()=>go("/r/"+r.id),
-        done:()=>{ markSeen(r.id); markBrief(id); logActivity("read","Tense note",r.headline||"Conversation","lucid_seen_brief",id); clear(); } }); });
+        done:()=>{ markSeen(r.id); markBrief(id); logActivity("read","Tense note",r.headline||"Conversation",[{store:"lucid_seen_brief",sid:id},{store:"lucid_seen_notes",sid:r.id}]); clear(); } }); });
     (b.vens||[]).filter(v=>!v.has_spec).slice(0,3).forEach(v=>{ const id="idea:"+v.id;
       out.push({ id, domain:"var(--topic)", mark:"◆", sort:3, kind:"Idea",
-        title:v.title, sub:v.summary||"No build plan yet", cta:"Generate plan",
+        title:v.title, sub:v.summary||"No build plan yet", cta:"Open idea",
         go:()=>go("/ventures/"+encodeURIComponent(v.id)),
         done:()=>{ markBrief(id); logActivity("read","Idea",v.title,"lucid_seen_brief",id); clear(); } }); });
     (b.tasks||[]).filter(keepAi).forEach(t=>{ const key=todoId(t), id="todo:"+key; if(dt.has(key)) return;
       out.push({ id, domain:"var(--pos)", mark:"☑", sort:4, kind:"To-do", title:t.text,
         sub:[t.owner?("— "+t.owner):"", t.due?("due "+t.due):"", t.note_headline].filter(Boolean).join(" · "),
         cta:"Open", go:()=>go("/r/"+t.note_id),
-        done:()=>{ markTodoDone(key); markBrief(id); logActivity("done","To-do",t.text,"lucid_done_todos",key); clear("Done ✓"); } }); });
+        done:()=>{ markTodoDone(key); markBrief(id); logActivity("done","To-do",t.text,[{store:"lucid_done_todos",sid:key},{store:"lucid_seen_brief",sid:"todo:"+key}]); clear("Done ✓"); } }); });
     return out.filter(it=>!seen.has(it.id)).sort((a,c)=>a.sort-c.sort);
   }
   function figures(b){
-    const done=b.recs.filter(r=>r.status==="done"), s=b.crm.stats||{};
+    const recsK=b.recs.filter(keepRec), done=recsK.filter(r=>r.status==="done"), s=b.crm.stats||{};
     const mins=Math.round(done.reduce((a,r)=>a+(r.duration||0),0)/60);
+    const openTodos=(b.tasks||[]).filter(keepAi).filter(t=>!doneTodos().has(todoId(t))).length;
     return [
-      {n:b.recs.length, cap:"Notes",        domain:"var(--ink)",      go:()=>go("/notes")},
+      {n:recsK.length,  cap:"Notes",        domain:"var(--ink)",      go:()=>go("/notes")},
       {n:b.ppl.length,  cap:"People",        domain:"var(--accent)",   go:()=>go("/people")},
-      {n:b.tasks.length,cap:"Open to-dos",   domain:"var(--pos)",      go:()=>go("/notes")},
+      {n:openTodos,     cap:"Open to-dos",   domain:"var(--pos)",      go:()=>go("/review")},
       {n:s.leads||0,    cap:"Leads",         domain:"var(--accent)",   go:()=>go("/crm")},
       {n:s.clients||0,  cap:"Clients",       domain:"var(--pos)",      go:()=>go("/crm")},
       {n:mins,          cap:"Min captured",  domain:"var(--decision)", go:()=>go("/notes")} ];
@@ -611,20 +623,21 @@ const App = (() => {
 
   function paintBrief(){
     _briefFns=[];
-    const b=brief, done=b.recs.filter(r=>r.status==="done"), s=b.crm.stats||{};
+    const b=brief, done=b.recs.filter(r=>r.status==="done").filter(keepRec), s=b.crm.stats||{};
     const hr=new Date().getHours();
     const greet=hr<12?"Good morning":hr<18?"Good afternoon":"Good evening";
     const who=(b.crm.owner_name||"").split(/\s+/)[0];
     const items=needsYou(b), up=agenda(b);
+    const openTodos=(b.tasks||[]).filter(keepAi).filter(t=>!doneTodos().has(todoId(t))).length;
     const owe=(b.crm.contacts||[]).filter(crmOwe).length;
     const mtgs=up.filter(e=>e.when.toDateString()===new Date().toDateString()).length;
 
     const bits=[];
     if(owe)  bits.push(`<b>${owe}</b> ${owe>1?"people owe":"person owes"} you a reply`);
     if(mtgs) bits.push(`<b>${mtgs}</b> meeting${mtgs>1?"s":""} today`);
-    if(b.tasks.length) bits.push(`<b>${b.tasks.length}</b> open to-do${b.tasks.length>1?"s":""}`);
+    if(openTodos) bits.push(`<b>${openTodos}</b> open to-do${openTodos>1?"s":""}`);
     const ed=bits.length?bits.join(" · "):"You're all caught up. Nothing needs you right now.";
-    setSubline(bits.length?[owe&&owe+" need you", mtgs&&mtgs+" today", b.tasks.length&&b.tasks.length+" to-dos"]
+    setSubline(bits.length?[owe&&owe+" need you", mtgs&&mtgs+" today", openTodos&&openTodos+" to-dos"]
         .filter(Boolean).join(" · "):"all clear");
 
     const ribbon=figures(b).map(f=>`<div class="statcard" style="--domain:${f.domain}" ${actAttr(f.go)}>
@@ -873,10 +886,13 @@ const App = (() => {
   // activity log — a visible history of everything you mark read/done (with undo)
   const activityLog=()=>_lsGet("lucid_activity");
   const logActivity=(type,kind,title,store,sid)=>{ try{ const a=_lsGet("lucid_activity");
-    a.unshift({type,kind,title:(title||"").slice(0,140),ts:Date.now(),store:store||"",sid:sid||""});
+    const stores=Array.isArray(store)?store:(store?[{store,sid}]:[]);
+    a.unshift({type,kind,title:(title||"").slice(0,140),ts:Date.now(),
+      store:stores[0]?stores[0].store:"", sid:stores[0]?stores[0].sid:"", stores});
     _lsSet("lucid_activity",a.slice(0,300)); }catch(_){} };
   const undoActivity=(idx)=>{ const a=_lsGet("lucid_activity"); const e=a[idx]; if(!e) return;
-    if(e.store&&e.sid){ const s=new Set(_lsGet(e.store)); s.delete(e.sid); _lsSet(e.store,[...s]); }
+    const stores=e.stores||(e.store?[{store:e.store,sid:e.sid}]:[]);
+    stores.forEach(({store,sid})=>{ if(store&&sid){ const s=new Set(_lsGet(store)); s.delete(sid); _lsSet(store,[...s]); } });
     a.splice(idx,1); _lsSet("lucid_activity",a); };
   const clearActivity=()=>_lsSet("lucid_activity",[]);
   const markTodoDone=(key)=>{ const s=new Set(_lsGet("lucid_done_todos")); s.add(key); _lsSet("lucid_done_todos",[...s]); };
@@ -1045,7 +1061,10 @@ const App = (() => {
       row.querySelectorAll(".rv-cta[data-act]").forEach(btn=>btn.onclick=(e)=>{
         e.stopPropagation(); const a=it.actions[+btn.dataset.act]; if(a&&a.run) a.run(row,btn); }); });
     const ub=document.getElementById("rvUndo");
-    if(ub) ub.onclick=()=>{ const arr=_lsGet("lucid_done_todos"); arr.pop(); _lsSet("lucid_done_todos",arr); toast("Undone"); paintReview(_rvData); };
+    if(ub) ub.onclick=()=>{ const log=_lsGet("lucid_activity");
+      const i=log.findIndex(e=>e.type==="done"&&(e.store==="lucid_done_todos"||(e.stores||[]).some(s=>s.store==="lucid_done_todos")));
+      if(i>=0) undoActivity(i); else { const arr=_lsGet("lucid_done_todos"); arr.pop(); _lsSet("lucid_done_todos",arr); }
+      toast("Undone"); paintReview(_rvData); };
     app.querySelectorAll(".actrow [data-undo]").forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); undoActivity(+b.dataset.undo); toast("Restored"); paintReview(_rvData); });
     const ac=document.getElementById("actClear");
     if(ac) ac.onclick=()=>{ if(!confirm("Clear your done/read history?")) return; clearActivity(); toast("History cleared"); paintReview(_rvData); };
@@ -1483,7 +1502,7 @@ const App = (() => {
   }
 
   async function showVentures(){
-    app.innerHTML=`<div class="view view--wide">${masthead({title:"Ideas",wide:true})}
+    app.innerHTML=`<div class="view">${masthead({title:"Ideas"})}
       <div class="figrow">${Array(3).fill('<div class="statcard"><span class="figure">&middot;</span></div>').join("")}</div>
       ${skeletons(3)}</div>`;
     let vs; try{ vs=await api("/api/ventures"); }catch(e){ return authOrError(e,showVentures); }
@@ -1496,8 +1515,8 @@ const App = (() => {
     setSubline(vs.length?`${vs.length} idea${vs.length>1?"s":""}${unplanned.length?` &middot; ${unplanned.length} to develop`:""}`:"ideas");
 
     if(!vs.length){
-      app.innerHTML=`<div class="view view--wide">
-        ${masthead({title:"Ideas",wide:true,note:"Brainstorms from your recordings gather here &mdash; each becomes a buildable plan."})}
+      app.innerHTML=`<div class="view">
+        ${masthead({title:"Ideas",note:"Brainstorms from your recordings gather here &mdash; each becomes a buildable plan."})}
         <div class="empty"><div class="big">&#9670;</div>No business ideas yet.
           <div class="hint">When you and the people around you brainstorm in a recording,
           the ideas collect here &mdash; each with a full build plan, ready to hand to Claude Code.</div></div></div>`;
@@ -1535,8 +1554,8 @@ const App = (() => {
       .map(g=>`<div class="daygroup crm-group"><div class="daylabel">${g.label}<span class="n">${g.list.length}</span></div>
         <div class="feed">${g.list.map(ventureCard).join("")}</div></div>`).join("");
 
-    app.innerHTML=`<div class="view view--wide idea-board">
-      ${masthead({title:"Ideas",wide:true,note:ed})}
+    app.innerHTML=`<div class="view idea-board">
+      ${masthead({title:"Ideas",note:ed})}
       <div class="figrow">${ribbon}</div>
       ${lane}
       ${groups||`<div class="empty"><div class="big">&#9676;</div>Nothing in this view.</div>`}</div>`;
@@ -2178,7 +2197,8 @@ const App = (() => {
 
   // ===== SETTINGS =====
   async function showSettings(){
-    app.innerHTML=`<div class="view"><div class="hero"><h1>Settings</h1></div>${skeletons(2)}</div>`;
+    setSubline("Settings");
+    app.innerHTML=`<div class="view">${masthead({title:"Settings"})}${skeletons(2)}</div>`;
     let st={}, sys={systems:[]}, crm={}, cal={}, dk={}, vp={enrolled:[]};
     try { st=await api("/api/settings"); } catch(e){ return authOrError(e,showSettings); }
     try { sys=await api("/api/systems"); } catch(e){}
@@ -2259,7 +2279,7 @@ const App = (() => {
       </div>`;
 
     app.innerHTML=`<div class="view">
-      <div class="hero"><h1>Settings</h1></div>
+      ${masthead({title:"Settings"})}
       ${share}
       <div class="panel"><h2>System status</h2>${sysHTML||'<p class="muted" style="font-size:14px">—</p>'}</div>
       <div class="panel"><h2>Configuration</h2>
@@ -2279,7 +2299,8 @@ const App = (() => {
         <div class="field"><label>Theme</label><select id="themeSel">
           <option value="">Auto (system)</option><option value="dark">Dark</option><option value="light">Light</option></select></div></div>
       <div class="panel"><h2>About</h2>
-        <p style="color:var(--muted);font-size:14px;margin:0;line-height:1.5">Lucid turns your Plaud recordings into clean, sorted notes — summaries, people, ideas, and action items — transcribed and analyzed on your own machine. Version 1.0.</p></div>
+        <p style="color:var(--muted);font-size:14px;margin:0;line-height:1.5">Lucid turns your Plaud recordings into clean, sorted notes — summaries, people, ideas, and action items — transcribed and analyzed on your own machine. Version 1.0.</p>
+        <div class="btnrow" style="margin-top:14px"><button class="btn ghost danger" id="signout">Sign out</button></div></div>
     </div>`;
     const sel=document.getElementById("themeSel"); sel.value=localStorage.getItem("lucid_theme")||"";
     sel.onchange=()=>{ const v=sel.value; v?localStorage.setItem("lucid_theme",v):localStorage.removeItem("lucid_theme"); applyTheme(); };
@@ -2335,6 +2356,8 @@ const App = (() => {
     const av=byId("apiRevoke"); if(av) av.onclick=async()=>{ if(!confirm("Turn off the data API? Code using the key will stop working."))return;
       try{ await api("/api/data/key",{method:"DELETE"}); toast("Data API off"); showSettings(); }catch(e){ toast("Failed"); } };
     const ak=byId("apiCopy"); if(ak) ak.onclick=async()=>{ try{ await navigator.clipboard.writeText((byId("apiKey")||{}).textContent||""); toast("Key copied"); }catch(e){ toast("Copy failed"); } };
+    const so=document.getElementById("signout");
+    if(so) so.onclick=()=>{ localStorage.removeItem("lucid_token"); token=""; showLogin(); };
   }
 
   // Record ~30s of mic audio and enroll it as the owner's voiceprint.
@@ -2436,6 +2459,7 @@ const App = (() => {
     const c=document.getElementById("lcode"), btn=document.getElementById("lbtn"), err=document.getElementById("lerr");
     document.getElementById("lresend").onclick=async(e)=>{ e.target.disabled=true; await sendCode(); err.textContent="New code sent."; setTimeout(()=>{try{e.target.disabled=false;}catch(_){}},2500); };
     const go=async()=>{ const v=c.value.replace(/\D/g,""); if(v.length<6){ err.textContent="Enter the 6-digit code."; return; }
+      if(btn.disabled) return;
       btn.disabled=true; err.textContent="";
       try{ const r=await fetch("/api/login/email/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:v})});
         if(!r.ok){ err.textContent=r.status===429?"Too many tries — wait a moment.":"That code is wrong or expired."; btn.disabled=false; return; }
