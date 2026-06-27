@@ -61,8 +61,20 @@ const App = (() => {
     const days=Math.round((sd(now)-sd(d))/86400000);
     if (days<=0) return "Today"; if (days===1) return "Yesterday"; if (days<7) return "This week";
     if (days<30) return "This month"; return "Earlier"; };
-  const toast = (m) => { toastEl.textContent=m; toastEl.classList.add("show");
-    clearTimeout(toast._t); toast._t=setTimeout(()=>toastEl.classList.remove("show"),2200); };
+  const toast = (m, action) => {
+    clearTimeout(toast._t);
+    if(action && action.label){
+      toastEl.innerHTML=`<span class="toast-msg"></span><button class="toast-act"></button>`;
+      toastEl.querySelector(".toast-msg").textContent=m;
+      const btn=toastEl.querySelector(".toast-act"); btn.textContent=action.label;
+      btn.onclick=()=>{ toastEl.classList.remove("show"); clearTimeout(toast._t); try{ action.run(); }catch(_){} };
+      toastEl.classList.add("show");
+      toast._t=setTimeout(()=>toastEl.classList.remove("show"), action.ms||6000);
+    } else {
+      toastEl.textContent=m; toastEl.classList.add("show");
+      toast._t=setTimeout(()=>toastEl.classList.remove("show"),2200);
+    }
+  };
   async function api(path, opts={}) { const headers=opts.headers||{};
     if (token) headers["Authorization"]="Bearer "+token;
     const res=await fetch(path,{...opts,headers});
@@ -91,11 +103,18 @@ const App = (() => {
   const setSubline=(t)=>{ const el=document.getElementById("subline"); if(el) el.textContent=t; };
   // Shared masthead — every department opens with the same dateline + serif headline.
   // title/note may contain trusted HTML (e.g. counts in <b>); greeting is plain text.
-  const masthead=({title,note="",greeting="",wide=false})=>`<div class="hero${wide?" hero--wide":""}">
+  const masthead=({title,note="",greeting="",wide=false,refresh=true})=>`<div class="hero${wide?" hero--wide":""}">
+      ${refresh?`<button class="mast-refresh" title="Refresh" aria-label="Refresh">↻</button>`:""}
       <div class="dateline">${datelineStr()}</div>
       ${greeting?`<div class="greeting">${h(greeting)}</div>`:""}
       <h1>${title}</h1>
       ${note?`<div class="ednote">${note}</div>`:""}</div>`;
+  // one delegated handler for every masthead ↻ (survives re-renders)
+  function refreshCurrent(){ const p=location.pathname;
+    brief=null; cache=[]; try{ crmData=null; }catch(_){}
+    toast("Refreshing…"); route(); }
+  document.addEventListener("click",(e)=>{ const t=e.target.closest&&e.target.closest(".mast-refresh");
+    if(t){ e.preventDefault(); e.stopPropagation(); const ic=t; ic.classList.add("spinning"); refreshCurrent(); } });
 
   // routing
   let cache=[], pollTimer=null, __navPaint=true;
@@ -627,6 +646,20 @@ const App = (() => {
     const hr=new Date().getHours();
     const greet=hr<12?"Good morning":hr<18?"Good afternoon":"Good evening";
     const who=(b.crm.owner_name||"").split(/\s+/)[0];
+    if(!b.recs.length){                                  // cold start — nothing captured yet
+      app.innerHTML=`<div class="view view--wide brief">
+        ${masthead({title:`${greet}${who?(", "+h(who)):""}.`, note:"Let's get Lucid set up.", wide:true, refresh:false})}
+        <div class="welcome-card">
+          <div class="wc-mark">✦</div>
+          <h2>Welcome to Lucid</h2>
+          <p>Your notes, people, to-dos and CRM gather here. Connect a source to begin — it fills in automatically.</p>
+          <div class="wc-steps">
+            <button class="wc-step" ${actAttr(()=>go("/settings"))}><b>Connect Plaud</b><span>Auto-import &amp; transcribe your recordings</span><i>→</i></button>
+            <button class="wc-step" ${actAttr(()=>go("/settings"))}><b>Connect Notion + Calendar</b><span>Sync your CRM and meetings</span><i>→</i></button>
+          </div>
+        </div></div>`;
+      setSubline("welcome"); bindBrief(); paintDone(); return;
+    }
     const items=needsYou(b), up=agenda(b);
     const openTodos=(b.tasks||[]).filter(keepAi).filter(t=>!doneTodos().has(todoId(t))).length;
     const owe=(b.crm.contacts||[]).filter(crmOwe).length;
@@ -917,9 +950,10 @@ const App = (() => {
   function reviewBuild(b){
     const now=Date.now(), today=new Date().toDateString();
     const isToday=(iso)=>{ const d=new Date(iso); return !isNaN(d)&&d.toDateString()===today; };
-    const done=doneTodos(), seen=seenNotes(), items=[];
+    const done=doneTodos(), seen=seenNotes(), bseen=briefSeen(), items=[];
     // 1 — contacts who owe you a reply (client > lead > network; draft acts faster)
     (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{
+      const rid="reply:"+c.email+":"+(c.last_ts||""); if(bseen.has(rid)) return;
       const client=!!c.is_client, lead=!client&&c.bucket!=="business", draft=!!c.draft;
       const ageH=(now-new Date(c.last_ts||now))/3600000;
       const score=(client?100:lead?80:60)+(draft?8:0)+(ageH<24?6:ageH<72?2:0);
@@ -929,6 +963,7 @@ const App = (() => {
         pills: draft?[{t:"draft ready",cls:"go"}]:[],
         time: rel(new Date(c.last_ts||now).toISOString()),
         open:()=>go("/crm/"+encodeURIComponent(c.email)),
+        dismiss:()=>{ markBrief(rid); logActivity("read","Reply",c.name||c.company||c.email,"lucid_seen_brief",rid); },
         actions:[ draft ? {label:"Copy draft", primary:true, run:copyDraft(c.draft)}
           : {label:"Reply →", primary:true, run:()=>go("/crm/"+encodeURIComponent(c.email))} ] });
     });
@@ -948,6 +983,7 @@ const App = (() => {
         kind:"Tense note · review", title:r.headline||"Conversation",
         sub:r.summary||"A tense moment worth a second look", pills:[], time:rel(r.created_at),
         seenId:r.id, open:()=>go("/r/"+r.id),
+        dismiss:()=>{ markSeen(r.id); logActivity("read","Tense note",r.headline||"Conversation","lucid_seen_notes",r.id); },
         actions:[{label:"Open →", primary:true, run:()=>{markSeen(r.id);go("/r/"+r.id);}}] });
     });
     // 4 — new notes today to triage
@@ -956,13 +992,16 @@ const App = (() => {
       items.push({ type:"triage", score:52, glyph:"∿", domain:m.c, kind:"New note · triage",
         title:r.headline||"Untitled", sub:r.summary||m.w, pills:[], time:rel(r.created_at),
         seenId:r.id, open:()=>go("/r/"+r.id),
+        dismiss:()=>{ markSeen(r.id); logActivity("read","Note",r.headline||"Untitled","lucid_seen_notes",r.id); },
         actions:[{label:"Open →", run:()=>{markSeen(r.id);go("/r/"+r.id);}}] });
     });
     // 5 — ideas with no build plan yet
     (b.vens||[]).filter(v=>!v.has_spec).slice(0,6).forEach(v=>{
+      const iid="idea:"+v.id; if(bseen.has(iid)) return;
       items.push({ type:"idea", score:40, glyph:"◆", domain:"var(--accent)", kind:"Idea · no build plan",
         title:v.title, sub:v.summary||"Turn this into a build plan", pills:[], time:v.last_seen?rel(v.last_seen):"",
         open:()=>go("/ventures/"+encodeURIComponent(v.id)),
+        dismiss:()=>{ markBrief(iid); logActivity("read","Idea",v.title,"lucid_seen_brief",iid); },
         actions:[{label:"Generate plan", primary:true, gen:true, run:(row)=>generatePlan(v.id,row)}] });
     });
     // 6 — CRM skip-queue: promote / dismiss (lowest signal)
@@ -996,12 +1035,13 @@ const App = (() => {
     const meta=(pills||it.time)?`<div class="rv-meta">${pills}${it.time?`<span class="rv-time">${h(it.time)}</span>`:""}</div>`:"";
     const acts=(it.actions||[]).map((a,ai)=>
       `<button class="rv-cta${a.primary?" is-primary":""}${a.x?" is-x":""}" data-act="${ai}"${a.gen?' data-gen="1"':''}>${h(a.label)}</button>`).join("");
+    const dismiss=it.dismiss?`<button class="rv-dismiss" title="Mark read" aria-label="Mark read" data-dismiss="1">✓</button>`:"";
     return `<div class="rvitem${it.multi?" has-multi":""}" data-i="${it._i}" style="--domain:${it.domain}">
       <span class="rv-chip"><span>${it.glyph}</span></span>
       <button class="rv-main"><div class="rv-kind">${h(it.kind)}</div>
         <div class="rv-title">${h(it.title)}</div>
         ${it.sub?`<div class="rv-sub">${h(it.sub)}</div>`:""}${meta}</button>
-      <div class="rv-act">${acts}</div></div>`;
+      <div class="rv-act">${acts}${dismiss}</div></div>`;
   }
 
   function paintReview(b){
@@ -1059,7 +1099,9 @@ const App = (() => {
       const main=row.querySelector(".rv-main");
       if(main) main.onclick=()=>{ if(it.seenId) markSeen(it.seenId); it.open&&it.open(); };
       row.querySelectorAll(".rv-cta[data-act]").forEach(btn=>btn.onclick=(e)=>{
-        e.stopPropagation(); const a=it.actions[+btn.dataset.act]; if(a&&a.run) a.run(row,btn); }); });
+        e.stopPropagation(); const a=it.actions[+btn.dataset.act]; if(a&&a.run) a.run(row,btn); });
+      const dz=row.querySelector("[data-dismiss]");
+      if(dz) dz.onclick=(e)=>{ e.stopPropagation(); if(it.dismiss) it.dismiss(); toast("Marked read"); collapseRow(row, ()=>paintReview(_rvData)); }; });
     const ub=document.getElementById("rvUndo");
     if(ub) ub.onclick=()=>{ const log=_lsGet("lucid_activity");
       const i=log.findIndex(e=>e.type==="done"&&(e.store==="lucid_done_todos"||(e.stores||[]).some(s=>s.store==="lucid_done_todos")));
@@ -2432,8 +2474,23 @@ const App = (() => {
       toast(isSpk ? `Got it — learning ${to}’s voice` : "Renamed & learned"); cache = []; showDetail(id);
     } catch(e){ toast("Rename failed"); }
   }
-  async function del(id){ if(!confirm("Delete this recording?"))return;
-    try{ await api(`/api/recordings/${id}`,{method:"DELETE"}); cache=[]; go("/lucid/notes"); }catch(e){toast("Failed");} }
+  let _pendingDel=null;
+  async function _flushDel(){ const p=_pendingDel; _pendingDel=null;
+    if(p){ try{ await api(`/api/recordings/${p.id}`,{method:"DELETE"}); }catch(_){} } }
+  async function del(id){
+    await _flushDel();                                  // commit any earlier pending delete first
+    const idx=cache.findIndex(r=>r.id===id), rec=cache[idx];
+    if(idx<0){ try{ await api(`/api/recordings/${id}`,{method:"DELETE"}); }catch(_){} cache=[]; go("/lucid/notes"); return; }
+    cache=cache.filter(r=>r.id!==id);                   // optimistic remove
+    _pendingDel={id, rec, idx};
+    if(location.pathname.startsWith("/r/")) go("/lucid/notes");
+    else if(location.pathname.startsWith("/lucid")) paintNotes();
+    toast("Note deleted", {label:"Undo", ms:6000, run:()=>{
+      if(_pendingDel && _pendingDel.id===id){ const p=_pendingDel; _pendingDel=null;
+        cache.splice(Math.min(p.idx,cache.length),0,p.rec);
+        if(location.pathname.startsWith("/lucid")) paintNotes(); else route(); } }});
+    setTimeout(()=>{ if(_pendingDel && _pendingDel.id===id) _flushDel(); }, 6300);
+  }
 
   function authOrError(e,retry){
     if (String(e.message)==="auth"){ return showLogin(retry); }
