@@ -971,11 +971,35 @@ async def rename_person(rec_id: str, request: Request) -> dict:
 @app.get("/api/crm/board", dependencies=[Depends(auth)])
 def crm_board() -> JSONResponse:
     import json as _json
+    import time as _time
+    from datetime import datetime as _dt
+    from .integrations import crm_sync
     path = settings.crm_contacts_path.parent / "crm_export.json"
     try:
-        return JSONResponse(_json.loads(path.read_text(encoding="utf-8")))
+        data = _json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return JSONResponse({"generated_at": "", "stats": {}, "contacts": [], "missing": True})
+        data = {"generated_at": "", "stats": {}, "contacts": [], "missing": True}
+    age = None
+    try:
+        age = max(0.0, (_time.time() - _dt.fromisoformat(data.get("generated_at")).timestamp()) / 60)
+    except Exception:
+        try:
+            age = max(0.0, (_time.time() - path.stat().st_mtime) / 60)
+        except Exception:
+            age = None
+    data["age_min"] = round(age, 1) if age is not None else None
+    data["refreshing"] = crm_sync.status().get("running", False)
+    data["can_refresh"] = crm_sync.available()
+    return JSONResponse(data)
+
+
+@app.post("/api/crm/refresh", dependencies=[Depends(auth)])
+def crm_refresh() -> JSONResponse:
+    """Run the orionscrm sync in the background to refresh the roster (export JSON)."""
+    from .integrations import crm_sync
+    started = crm_sync.refresh_async()
+    return JSONResponse({"started": started, "running": crm_sync.status().get("running", False),
+                         "available": crm_sync.available()})
 
 
 # --------------------------------------------------------------------------- #

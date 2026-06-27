@@ -1066,3 +1066,14 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
 .sheet-grab{ width:auto; height:auto; background:none; padding:10px 0 12px; margin:0; cursor:grab; } /* @375 */
 .sheet-grab::before{ content:""; display:block; width:44px; height:5px; border-radius:99px;
   background:var(--line); margin:0 auto; }
+
+/* CRM freshness / refresh control */
+.hero .dateline .freshsep{ margin:0 7px; opacity:.5; }
+.hero .dateline .fresh{ color:var(--muted); }
+.rfbtn{ margin-left:8px; width:26px; height:26px; border-radius:50%; border:1px solid var(--line);
+  background:var(--card); color:var(--ink-soft); font-size:13px; line-height:1; cursor:pointer;
+  vertical-align:-2px; transition:transform .14s var(--ease), border-color .14s, color .14s; }
+.rfbtn:hover{ border-color:var(--accent); color:var(--accent-ink); }
+.rfbtn.spin{ animation:spin360 .9s linear infinite; pointer-events:none; color:var(--accent-ink); }
+@keyframes spin360{ to{ transform:rotate(360deg); } }
+@media (hover:none),(max-width:760px){ .rfbtn{ width:40px; height:40px; font-size:16px; } }

@@ -129,11 +129,34 @@ const App = (() => {
   const tlColor=(t)=> t.lucid?"var(--pos)":t.kind==="meeting"?"var(--decision)":t.kind==="sms"?"var(--neu)":t.direction==="out"?"var(--accent)":"var(--question)";
   const tlMark =(t)=> t.lucid?"∿":t.kind==="meeting"?"◷":t.kind==="sms"?"○":t.direction==="out"?"↗":"↙";
 
+  const agoLabel=(m)=>{ if(m==null) return ""; if(m<1.5) return "Updated just now";
+    if(m<60) return "Updated "+Math.round(m)+"m ago"; const hh=Math.round(m/60);
+    return "Updated "+hh+"h ago"; };
+  let _crmPoll=null;
+  async function crmRefresh(manual){
+    clearTimeout(_crmPoll);
+    let r; try{ r=await api("/api/crm/refresh",{method:"POST"}); }catch(e){ return; }
+    if(r && r.available===false){ if(manual) toast("orionscrm not found on this PC"); return; }
+    if(manual) toast("Refreshing roster…");
+    const cf=document.getElementById("crmRefresh"); if(cf) cf.classList.add("spin");
+    const t0=(crmData&&crmData.generated_at)||"", started=Date.now();
+    const poll=async()=>{
+      let d; try{ d=await api("/api/crm/board"); }catch(e){ return; }
+      if(d && d.generated_at && d.generated_at!==t0){ crmData=d;
+        if(manual) toast("Roster updated"); if(location.pathname==="/crm") paintCRM(); return; }
+      if(Date.now()-started<150000) _crmPoll=setTimeout(poll,4000);
+      else { const c=document.getElementById("crmRefresh"); if(c) c.classList.remove("spin"); }
+    };
+    _crmPoll=setTimeout(poll,4000);
+  }
+
   async function showCRM(){
     app.innerHTML=`<div class="view"><div class="hero"><div class="skhero shimmer"></div></div>${skeletons(3)}</div>`;
     let d; try { d=await api("/api/crm/board"); } catch(e){ return authOrError(e,showCRM); }
     crmData=d; document.getElementById("subline").textContent="CRM";
     paintCRM();
+    // auto-refresh if the roster is stale (>30 min) and orionscrm is reachable locally
+    if (d.can_refresh && !d.refreshing && (d.age_min==null || d.age_min>30)) crmRefresh(false);
   }
 
   function crmCard(c){
@@ -213,7 +236,7 @@ const App = (() => {
 
     app.innerHTML=`<div class="view crm-board">
       <div class="hero">
-        <div class="dateline">${datelineStr()}</div>
+        <div class="dateline">${datelineStr()}${d.age_min!=null||d.can_refresh?`<span class="freshsep">·</span><span class="fresh">${h(agoLabel(d.age_min))}</span>${d.can_refresh?`<button class="rfbtn${d.refreshing?" spin":""}" id="crmRefresh" title="Refresh roster">↻</button>`:""}`:""}</div>
         <h1>CRM <span class="count">${all.length} contacts</span></h1>
         <div class="ednote">Your book of business, fresh this morning — ${bits.join(" · ")}.</div>
       </div>
@@ -224,6 +247,7 @@ const App = (() => {
     paintDone();
 
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
+    const rf=document.getElementById("crmRefresh"); if(rf) rf.onclick=()=>crmRefresh(true);
     const sc=app.querySelector('.statcard[data-scroll]');
     if(sc) sc.onclick=()=>{const el=document.getElementById("owelane"); if(el) el.scrollIntoView({behavior:"smooth",block:"start"});};
     app.querySelectorAll(".filterbar .fchip").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
