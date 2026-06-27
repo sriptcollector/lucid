@@ -75,3 +75,18 @@ def refresh_async() -> bool:
         return False
     threading.Thread(target=run_once, daemon=True, name="crm-sync").start()
     return True
+
+
+def set_override(email: str, action: str) -> bool:
+    """Write a sticky correction via `cli.py act <promote|lead|remove> <email>` (from the review
+    queue). Quick (no sync); the caller then triggers a refresh to surface the change."""
+    crm_dir, py = _paths()
+    if action not in ("promote", "lead", "remove") or not Path(crm_dir, "cli.py").exists() or not email:
+        return False
+    try:
+        r = subprocess.run([py, "cli.py", "act", action, email], cwd=crm_dir,
+                           env=dict(os.environ, PYTHONIOENCODING="utf-8"),
+                           capture_output=True, text=True, timeout=60)
+        return r.returncode == 0
+    except Exception:
+        return False

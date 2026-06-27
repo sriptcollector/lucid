@@ -1077,3 +1077,20 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
 .rfbtn.spin{ animation:spin360 .9s linear infinite; pointer-events:none; color:var(--accent-ink); }
 @keyframes spin360{ to{ transform:rotate(360deg); } }
 @media (hover:none),(max-width:760px){ .rfbtn{ width:40px; height:40px; font-size:16px; } }
+
+/* CRM review queue — "miss nothing" */
+.revsec{ margin:22px 0 8px; }
+.revrow{ display:flex; align-items:center; gap:12px; padding:12px 14px; background:var(--card);
+  border:1px solid var(--line); border-left:3px solid var(--neu); border-radius:var(--radius-sm);
+  box-shadow:var(--sh-soft); margin-bottom:8px; }
+.revrow .rev-l{ flex:1; min-width:0; }
+.rev-name{ font-weight:650; font-size:15px; color:var(--ink); letter-spacing:-.01em; }
+.rev-why{ font-size:12.5px; color:var(--ink-soft); line-height:1.4; margin-top:2px;
+  display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+.rev-acts{ flex:none; display:flex; align-items:center; gap:7px; }
+.rev-acts .cta{ height:34px; padding:0 12px; font-size:12.5px; }
+.rev-x{ width:32px; height:32px; border-radius:50%; border:1px solid var(--line); background:var(--card);
+  color:var(--muted); cursor:pointer; font-size:12px; flex:none; }
+.rev-x:hover{ border-color:var(--ten); color:var(--ten-ink); }
+@media (max-width:760px){ .rev-acts .cta{ height:40px; } .rev-x{ width:40px; height:40px; } }
+@media (max-width:430px){ .revrow{ flex-wrap:wrap; } .revrow .rev-l{ flex:1 1 100%; } .rev-acts{ margin-left:auto; } }

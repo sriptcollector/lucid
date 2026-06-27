@@ -135,7 +135,7 @@ const App = (() => {
   let _crmPoll=null;
   async function crmRefresh(manual){
     clearTimeout(_crmPoll);
-    let r; try{ r=await api("/api/crm/refresh",{method:"POST"}); }catch(e){ return; }
+    let r; try{ r=await api("/api/crm/board/refresh",{method:"POST"}); }catch(e){ return; }
     if(r && r.available===false){ if(manual) toast("orionscrm not found on this PC"); return; }
     if(manual) toast("Refreshing roster…");
     const cf=document.getElementById("crmRefresh"); if(cf) cf.classList.add("spin");
@@ -234,6 +234,19 @@ const App = (() => {
     const chips=[{k:"all",l:"All"},{k:"client",l:`Clients ${s.clients||0}`},{k:"lead",l:`Leads ${s.leads||0}`},{k:"network",l:`Network ${s.network||0}`}]
       .map(f=>`<button class="fchip ${crmFilter===f.k?"on":""}" data-f="${f.k}">${f.l}</button>`).join("");
 
+    // Review queue — everyone we considered but didn't add, so nothing is silently missed.
+    const rev=(d.review||[]);
+    const revHTML = (crmFilter==="all"&&rev.length)?`<div class="revsec">
+      <div class="lanehead">Miss nothing — we skipped these, promote any that belong <span class="n">${rev.length}</span></div>
+      ${rev.slice(0,40).map(r=>`<div class="revrow" data-email="${h(r.email)}">
+        <div class="rev-l"><div class="rev-name">${h(r.name||r.company||r.email)}</div>
+          <div class="rev-why">${h(r.summary||r.category||"unclear")}${(r.name||r.company)?` · ${h(r.email)}`:""}</div></div>
+        <div class="rev-acts">
+          <button class="cta line" data-ov="promote">+ Client</button>
+          <button class="cta line" data-ov="lead">+ Lead</button>
+          <button class="rev-x" data-ov="remove" title="Dismiss">✕</button>
+        </div></div>`).join("")}</div>`:"";
+
     app.innerHTML=`<div class="view crm-board">
       <div class="hero">
         <div class="dateline">${datelineStr()}${d.age_min!=null||d.can_refresh?`<span class="freshsep">·</span><span class="fresh">${h(agoLabel(d.age_min))}</span>${d.can_refresh?`<button class="rfbtn${d.refreshing?" spin":""}" id="crmRefresh" title="Refresh roster">↻</button>`:""}`:""}</div>
@@ -243,7 +256,8 @@ const App = (() => {
       <div class="figrow">${ribbon}</div>
       ${oweHTML}
       <div class="filterbar">${chips}</div>
-      ${sections||`<div class="empty"><div class="big">◌</div>Nothing in this view.</div>`}</div>`;
+      ${sections||`<div class="empty"><div class="big">◌</div>Nothing in this view.</div>`}
+      ${revHTML}</div>`;
     paintDone();
 
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
@@ -259,6 +273,21 @@ const App = (() => {
       const c=all.find(x=>x.email===b.dataset.copy);
       if(c&&c.draft) navigator.clipboard.writeText(c.draft).then(()=>toast("Draft copied"));
     });
+    app.querySelectorAll(".revrow [data-ov]").forEach(b=>b.onclick=(e)=>{
+      e.stopPropagation(); const row=b.closest(".revrow"); crmOverride(row.dataset.email, b.dataset.ov);
+    });
+  }
+
+  async function crmOverride(email, action){
+    const el=document.querySelector('.revrow[data-email="'+(window.CSS&&CSS.escape?CSS.escape(email):email)+'"]');
+    if(el){ el.style.opacity=".4"; el.style.pointerEvents="none"; }
+    try{ await api("/api/crm/board/override",{method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({email,action})}); }
+    catch(e){ if(el){el.style.opacity="";el.style.pointerEvents="";} toast("Couldn't save"); return; }
+    if(crmData&&crmData.review) crmData.review=crmData.review.filter(r=>r.email!==email);
+    toast(action==="remove"?"Dismissed":action==="lead"?"Added as lead":"Added as client");
+    if(action!=="remove") crmRefresh(false);   // pull them into the roster
+    if(location.pathname==="/crm") paintCRM();
   }
 
   function showCRMContact(email){

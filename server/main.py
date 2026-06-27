@@ -993,13 +993,29 @@ def crm_board() -> JSONResponse:
     return JSONResponse(data)
 
 
-@app.post("/api/crm/refresh", dependencies=[Depends(auth)])
-def crm_refresh() -> JSONResponse:
+@app.post("/api/crm/board/refresh", dependencies=[Depends(auth)])
+def crm_board_refresh() -> JSONResponse:
     """Run the orionscrm sync in the background to refresh the roster (export JSON)."""
     from .integrations import crm_sync
     started = crm_sync.refresh_async()
     return JSONResponse({"started": started, "running": crm_sync.status().get("running", False),
                          "available": crm_sync.available()})
+
+
+@app.post("/api/crm/board/override", dependencies=[Depends(auth)])
+async def crm_board_override(request: Request) -> JSONResponse:
+    """Promote/Lead/Remove a contact from Lucid's review queue — writes a sticky orionscrm
+    override, then refreshes so the change shows. body: {email, action: promote|lead|remove}."""
+    from .integrations import crm_sync
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    action = (body.get("action") or "").strip()
+    if not email or action not in ("promote", "lead", "remove"):
+        return JSONResponse({"ok": False, "error": "bad request"}, status_code=400)
+    ok = await asyncio.to_thread(crm_sync.set_override, email, action)
+    if ok:
+        crm_sync.refresh_async()
+    return JSONResponse({"ok": ok, "refreshing": crm_sync.status().get("running", False)})
 
 
 # --------------------------------------------------------------------------- #
