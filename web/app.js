@@ -24,6 +24,24 @@ const App = (() => {
     next ? localStorage.setItem("lucid_theme", next) : localStorage.removeItem("lucid_theme"); applyTheme();
   };
 
+  // relevance gate — Lucid records ALL audio (incl. audio dramas, therapy, social). By default
+  // surface only work-signal: a business keyword AND no clear personal marker. Toggle to see all.
+  const _BIZ_RE=/\b(ai|a\.i\.|claude|llm|agentic|agents?|automation|automate|consult\w*|clients?|project|software|saas|strateg\w*|campaign|integration|onboard\w*|contract\w*|invest\w*|funding|startup|founders?|business|proposal|pricing|launch\w*|marketing|sales|product\w*|deliverables?|contractor|demo|deal\b|revenue|partner\w*|pitch|investor\w*|roadmap|hire|hiring)\b/i;
+  const _PERSONAL_RE=/\b(audio drama|drama|fiction|scripted|screenplay|therapy|therapist|counsel\w*|story|teens?|kids?|child\w*|kiss|marry|dating|girlfriend|boyfriend|family|social|party|gossip|prank)\b/i;
+  let workOnly = localStorage.getItem("lucid_all") !== "1";
+  const _wtxt=(r)=>((r&&r.headline)||"")+" "+((r&&r.summary)||"")+" "+(((r&&r.topics)||[]).join(" "));
+  const recWork=(r)=>{ const t=_wtxt(r); return _BIZ_RE.test(t) && !_PERSONAL_RE.test(t); };
+  const aiWork=(t)=>{ const s=((t&&t.note_headline)||"")+" "+((t&&t.text)||""); return _BIZ_RE.test(s) && !_PERSONAL_RE.test(s); };
+  const keepRec=(r)=> !workOnly || recWork(r);
+  const keepAi=(t)=> !workOnly || aiWork(t);
+  function bindWorkBtn(){
+    const b=document.getElementById("workBtn"); if(!b) return;
+    b.textContent = workOnly ? "Work" : "All";
+    b.classList.toggle("on", workOnly);
+    b.title = workOnly ? "Showing work-relevant — tap for all" : "Showing all — tap for work-relevant";
+    b.onclick = ()=>{ workOnly=!workOnly; localStorage.setItem("lucid_all", workOnly?"0":"1"); bindWorkBtn(); route(); };
+  }
+
   // helpers
   const h = (s) => (s == null ? "" : String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"));
   const fmt = (sec) => { sec = Math.max(0, Math.floor(sec||0));
@@ -419,7 +437,7 @@ const App = (() => {
     const ppl=seen.size;
 
     const ft=FILTERS.find(f=>f.k===homeFilter)||FILTERS[0];
-    let list=recs.filter(ft.test);
+    let list=recs.filter(ft.test).filter(keepRec);
     if (homeSort==="oldest") list=[...list].reverse();
     else if (homeSort==="longest") list=[...list].sort((a,b)=>(b.duration||0)-(a.duration||0));
 
@@ -498,9 +516,13 @@ const App = (() => {
           ${ppl?`<span class="chip">${ppl} ${ppl>1?"people":"person"}</span>`:""}
           ${topics}
           <span class="time">${h(rel(r.created_at))}</span>
-        </div></div></div>`;
+        </div></div>
+        <button class="carddel" data-del="${r.id}" title="Delete note" aria-label="Delete note">&#215;</button></div>`;
   }
-  const bindCards=()=>app.querySelectorAll(".rcard").forEach(c=>c.onclick=()=>go("/r/"+c.dataset.id));
+  const bindCards=()=>{
+    app.querySelectorAll(".rcard").forEach(c=>c.onclick=()=>go("/r/"+c.dataset.id));
+    app.querySelectorAll(".carddel").forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); del(b.dataset.del); });
+  };
 
   // ===== HOME — "THE BRIEF" (command center, routed at "/") =====
   let brief=null, _briefFns=[];
@@ -541,14 +563,14 @@ const App = (() => {
         kind:d?"Draft ready":(c.action==="follow_up"?"Follow up":"Reply"),
         title:c.name||c.company||c.email, sub:c.situation||c.summary||"",
         cta:d?"Copy draft":"Open", copy:d?c.draft:"", go:()=>go("/crm/"+encodeURIComponent(c.email)) }); });
-    (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense").slice(0,4).forEach(r=>{
+    (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&keepRec(r)).slice(0,4).forEach(r=>{
       out.push({ domain:"var(--ten)", mark:"⚠", sort:2, kind:"Tense note",
         title:r.headline||"Conversation", sub:r.summary||"", cta:"Review", go:()=>go("/r/"+r.id) }); });
     (b.vens||[]).filter(v=>!v.has_spec).slice(0,3).forEach(v=>{
       out.push({ domain:"var(--topic)", mark:"◆", sort:3, kind:"Idea",
         title:v.title, sub:v.summary||"No build plan yet", cta:"Generate plan",
         go:()=>go("/ventures/"+encodeURIComponent(v.id)) }); });
-    (b.tasks||[]).slice(0,6).forEach(t=>{
+    (b.tasks||[]).filter(keepAi).slice(0,6).forEach(t=>{
       out.push({ domain:"var(--pos)", mark:"☑", sort:4, kind:"To-do", title:t.text,
         sub:[t.owner?("— "+t.owner):"", t.due?("due "+t.due):"", t.note_headline].filter(Boolean).join(" · "),
         cta:"Open", go:()=>go("/r/"+t.note_id) }); });
@@ -865,7 +887,7 @@ const App = (() => {
           : {label:"Reply →", primary:true, run:()=>go("/crm/"+encodeURIComponent(c.email))} ] });
     });
     // 2 — open to-dos (overdue first)
-    (b.tasks||[]).forEach(t=>{ const id=todoId(t); if(done.has(id)) return;
+    (b.tasks||[]).filter(keepAi).forEach(t=>{ const id=todoId(t); if(done.has(id)) return;
       const due=(t.due||"").toLowerCase(); const overdue=/(yesterday|overdue|asap|today|now)/.test(due);
       const fresh=isToday(t.created_at); const score=50+(overdue?20:0)+(fresh?6:0);
       items.push({ type:"todo", score, glyph:"✓", domain: overdue?"var(--caution)":"var(--positive)",
@@ -875,7 +897,7 @@ const App = (() => {
         actions:[{label:"Done", primary:true, run:(row)=>completeTodo(id,row)}] });
     });
     // 3 — tense notes today
-    (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&isToday(r.created_at)&&!seen.has(r.id)).forEach(r=>{
+    (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&isToday(r.created_at)&&!seen.has(r.id)&&keepRec(r)).forEach(r=>{
       items.push({ type:"triage", score:72, glyph:"⚠", domain:"var(--critical)",
         kind:"Tense note · review", title:r.headline||"Conversation",
         sub:r.summary||"A tense moment worth a second look", pills:[], time:rel(r.created_at),
@@ -883,7 +905,7 @@ const App = (() => {
         actions:[{label:"Open →", primary:true, run:()=>{markSeen(r.id);go("/r/"+r.id);}}] });
     });
     // 4 — new notes today to triage
-    (b.recs||[]).filter(r=>r.status==="done"&&isToday(r.created_at)&&mood(r).k!=="tense"&&!seen.has(r.id)).slice(0,8).forEach(r=>{
+    (b.recs||[]).filter(r=>r.status==="done"&&isToday(r.created_at)&&mood(r).k!=="tense"&&!seen.has(r.id)&&keepRec(r)).slice(0,8).forEach(r=>{
       const m=mood(r);
       items.push({ type:"triage", score:52, glyph:"∿", domain:m.c, kind:"New note · triage",
         title:r.headline||"Untitled", sub:r.summary||m.w, pills:[], time:rel(r.created_at),
@@ -2357,6 +2379,7 @@ const App = (() => {
     setTimeout(()=>{ try{pw.focus();}catch(_){}} ,120);
   }
 
+  bindWorkBtn();
   route();
   return { go, reanalyze, del, rename, chat, masthead, setSubline, datelineStr };
 })();
