@@ -43,6 +43,19 @@ from .pipeline.rename import rename_person as _rename_in
 
 app = FastAPI(title="Lucid", version="1.0.0")
 
+
+@app.middleware("http")
+async def _fresh_assets(request: Request, call_next):
+    """Never serve a stale app shell or CSS/JS — make the browser revalidate each load.
+    This is a frequently-updated self-hosted app; without it, edits look broken until a
+    hard refresh (the cause of the 'it looks terrible' stale-CSS issue)."""
+    resp = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".js", ".css", ".html", ".webmanifest")):
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
+
+
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="lucid-pipe")
 # Frozen (PyInstaller) builds bundle web/ as data; resolve it from _MEIPASS.
 if getattr(sys, "frozen", False):
@@ -988,6 +1001,7 @@ def crm_board() -> JSONResponse:
         except Exception:
             age = None
     data["age_min"] = round(age, 1) if age is not None else None
+    data["owner_name"] = settings.owner_name        # personalizes the Brief greeting
     data["refreshing"] = crm_sync.status().get("running", False)
     data["can_refresh"] = crm_sync.available()
     return JSONResponse(data)
@@ -1042,12 +1056,14 @@ def setup_page():
 @app.get("/r/{rec_id}")
 @app.get("/people/{key}")
 @app.get("/ventures/{vid}")
+@app.get("/notes")
 @app.get("/search")
 @app.get("/settings")
 @app.get("/people")
 @app.get("/directory")
 @app.get("/ventures")
 @app.get("/crm")
+@app.get("/review")
 def spa_routes(rec_id: str = "", key: str = "", vid: str = ""):
     return _spa() if settings.is_configured else RedirectResponse("/setup")
 
