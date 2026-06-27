@@ -1048,6 +1048,7 @@ def setup_page():
 @app.get("/directory")
 @app.get("/ventures")
 @app.get("/crm")
+@app.get("/review")
 def spa_routes(rec_id: str = "", key: str = "", vid: str = ""):
     return _spa() if settings.is_configured else RedirectResponse("/setup")
 
