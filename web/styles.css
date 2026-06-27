@@ -1516,3 +1516,9 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
 
 /* destructive button (remove from CRM, etc.) */
 .btn.danger:hover{ border-color:var(--critical); color:var(--critical-ink); }
+
+/* passwordless login — secondary text actions */
+.loginalt{ display:block; width:100%; margin-top:10px; background:none; border:0; color:var(--ink-3);
+  font:inherit; font-size:13px; cursor:pointer; padding:6px; }
+.loginalt:hover{ color:var(--accent-ink); }
+.login-card input[inputmode="numeric"]{ letter-spacing:.3em; text-align:center; font-size:22px; }

@@ -34,7 +34,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import backup, setup_service, storage, tunnel
+from . import backup, email_login, setup_service, storage, tunnel
 from .config import settings
 from .ingest import intake, plaud_cloud, telegram_bot, watcher
 from .models import Status
@@ -368,6 +368,40 @@ async def login(request: Request) -> dict:
             _login_guard["fails"] = 0
         await asyncio.sleep(0.5)                   # blunt online guessing
         raise HTTPException(401, "Incorrect password.")
+    _login_guard["fails"] = 0
+    _login_guard["until"] = 0.0
+    return {"ok": True, "token": token}
+
+
+@app.get("/api/login/email/status")
+def login_email_status() -> dict:
+    """Tells the login screen whether to offer passwordless email sign-in."""
+    return {"available": email_login.configured()}
+
+
+@app.post("/api/login/email/request")
+async def login_email_request(request: Request) -> dict:
+    """Email a one-time code to the owner. Always {ok:true} (no enumeration)."""
+    email = (await request.json()).get("email", "")
+    return await asyncio.to_thread(email_login.request_code, email)
+
+
+@app.post("/api/login/email/verify")
+async def login_email_verify(request: Request) -> dict:
+    """Exchange a correct code for the bearer token (shares the brute guard)."""
+    body = await request.json()
+    now = time.time()
+    if _login_guard["until"] > now:
+        raise HTTPException(429, "Too many attempts — wait a moment and try again.")
+    token = await asyncio.to_thread(
+        email_login.verify_code, body.get("email", ""), body.get("code", ""))
+    if not token:
+        _login_guard["fails"] += 1
+        if _login_guard["fails"] >= 8:
+            _login_guard["until"] = now + 30
+            _login_guard["fails"] = 0
+        await asyncio.sleep(0.4)
+        raise HTTPException(401, "Invalid or expired code.")
     _login_guard["fails"] = 0
     _login_guard["until"] = 0.0
     return {"ok": True, "token": token}

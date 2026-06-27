@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     crm_backend: str = "notion"             # notion (only backend for now)
     crm_database_id: str = ""               # the shared Notion "clients" database
     owner_name: str = ""                    # the recorder ('I'/narrator) for solo notes
+    owner_email: str = ""                   # where passwordless email login codes are sent
 
     # --- Calendar matching (read-only): a secret iCal/ICS URL (no OAuth) ---
     cal_enabled: bool = False
