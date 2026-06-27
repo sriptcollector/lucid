@@ -567,24 +567,29 @@ const App = (() => {
   }
 
   function needsYou(b){
-    const out=[];
-    (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{ const d=!!c.draft;
-      out.push({ domain:stageColor(c), mark:"✍", sort:d?0:1,
+    const out=[], seen=briefSeen(), dt=doneTodos();
+    const clear=(msg)=>{ paintBrief(); toast(msg||"Marked read"); };
+    (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{ const d=!!c.draft, id="reply:"+c.email;
+      out.push({ id, domain:stageColor(c), mark:"✍", sort:d?0:1,
         kind:d?"Draft ready":(c.action==="follow_up"?"Follow up":"Reply"),
         title:c.name||c.company||c.email, sub:c.situation||c.summary||"",
-        cta:d?"Copy draft":"Open", copy:d?c.draft:"", go:()=>go("/crm/"+encodeURIComponent(c.email)) }); });
-    (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&keepRec(r)).slice(0,4).forEach(r=>{
-      out.push({ domain:"var(--ten)", mark:"⚠", sort:2, kind:"Tense note",
-        title:r.headline||"Conversation", sub:r.summary||"", cta:"Review", go:()=>go("/r/"+r.id) }); });
-    (b.vens||[]).filter(v=>!v.has_spec).slice(0,3).forEach(v=>{
-      out.push({ domain:"var(--topic)", mark:"◆", sort:3, kind:"Idea",
+        cta:d?"Copy draft":"Open", copy:d?c.draft:"", go:()=>go("/crm/"+encodeURIComponent(c.email)),
+        done:()=>{ markBrief(id); clear(); } }); });
+    (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&keepRec(r)).slice(0,4).forEach(r=>{ const id="tense:"+r.id;
+      out.push({ id, domain:"var(--ten)", mark:"⚠", sort:2, kind:"Tense note",
+        title:r.headline||"Conversation", sub:r.summary||"", cta:"Review", go:()=>go("/r/"+r.id),
+        done:()=>{ markSeen(r.id); markBrief(id); clear(); } }); });
+    (b.vens||[]).filter(v=>!v.has_spec).slice(0,3).forEach(v=>{ const id="idea:"+v.id;
+      out.push({ id, domain:"var(--topic)", mark:"◆", sort:3, kind:"Idea",
         title:v.title, sub:v.summary||"No build plan yet", cta:"Generate plan",
-        go:()=>go("/ventures/"+encodeURIComponent(v.id)) }); });
-    (b.tasks||[]).filter(keepAi).slice(0,6).forEach(t=>{
-      out.push({ domain:"var(--pos)", mark:"☑", sort:4, kind:"To-do", title:t.text,
+        go:()=>go("/ventures/"+encodeURIComponent(v.id)),
+        done:()=>{ markBrief(id); clear(); } }); });
+    (b.tasks||[]).filter(keepAi).forEach(t=>{ const key=todoId(t), id="todo:"+key; if(dt.has(key)) return;
+      out.push({ id, domain:"var(--pos)", mark:"☑", sort:4, kind:"To-do", title:t.text,
         sub:[t.owner?("— "+t.owner):"", t.due?("due "+t.due):"", t.note_headline].filter(Boolean).join(" · "),
-        cta:"Open", go:()=>go("/r/"+t.note_id) }); });
-    return out.sort((a,c)=>a.sort-c.sort);
+        cta:"Open", go:()=>go("/r/"+t.note_id),
+        done:()=>{ markTodoDone(key); markBrief(id); clear("Done ✓"); } }); });
+    return out.filter(it=>!seen.has(it.id)).sort((a,c)=>a.sort-c.sort);
   }
   function figures(b){
     const done=b.recs.filter(r=>r.status==="done"), s=b.crm.stats||{};
@@ -629,8 +634,11 @@ const App = (() => {
         <span class="qmark">${it.mark}</span>
         <div class="qmain"><div class="qkind">${h(it.kind)}</div>
           <div class="qtitle">${h(it.title)}</div>${it.sub?`<div class="qsub">${h(it.sub)}</div>`:""}</div>
-        ${it.copy?`<button class="qcta solid" ${actAttr(copyDraft(it.copy))}>${h(it.cta)}</button>`
-                 :`<button class="qcta" ${actAttr(it.go)}>${h(it.cta)}</button>`}</div>`).join("")
+        <div class="qacts">
+          ${it.copy?`<button class="qcta solid" ${actAttr(copyDraft(it.copy))}>${h(it.cta)}</button>`
+                   :`<button class="qcta" ${actAttr(it.go)}>${h(it.cta)}</button>`}
+          ${it.done?`<button class="qread" title="Mark as read" aria-label="Mark as read" ${actAttr(it.done)}>✓</button>`:""}
+        </div></div>`).join("")
       : `<div class="allclear"><b>Clear desk.</b> No replies owed, no tense notes, every idea has a plan.</div>`;
 
     const todayRail = up.length
@@ -860,6 +868,9 @@ const App = (() => {
   const doneTodos=()=>new Set(_lsGet("lucid_done_todos"));
   const seenNotes=()=>new Set(_lsGet("lucid_seen_notes"));
   const markSeen =(id)=>{ const s=new Set(_lsGet("lucid_seen_notes")); s.add(id); _lsSet("lucid_seen_notes",[...s]); };
+  const briefSeen=()=>new Set(_lsGet("lucid_seen_brief"));
+  const markBrief=(id)=>{ const s=new Set(_lsGet("lucid_seen_brief")); s.add(id); _lsSet("lucid_seen_brief",[...s]); };
+  const markTodoDone=(key)=>{ const s=new Set(_lsGet("lucid_done_todos")); s.add(key); _lsSet("lucid_done_todos",[...s]); };
 
   async function showReview(){
     setTab("review");

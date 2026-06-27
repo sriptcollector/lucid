@@ -1522,3 +1522,11 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
   font:inherit; font-size:13px; cursor:pointer; padding:6px; }
 .loginalt:hover{ color:var(--accent-ink); }
 .login-card input[inputmode="numeric"]{ letter-spacing:.3em; text-align:center; font-size:22px; }
+
+/* Brief worklist: mark-as-read affordance */
+.qrow .qacts{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.qread{ width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--surface);
+  color:var(--ink-3); font-size:15px; line-height:1; cursor:pointer; flex-shrink:0; display:grid; place-items:center;
+  transition:border-color .14s var(--ease), color .14s, background .14s; }
+.qread:hover{ border-color:var(--positive); color:var(--positive-ink); background:var(--surface-hi); }
+@media (hover:none){ .qread{ width:38px; height:38px; } }
