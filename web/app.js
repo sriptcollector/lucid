@@ -11,7 +11,7 @@ const App = (() => {
 
   // theme (system → dark → light) + live status-bar color
   const metaTheme=document.querySelector('meta[name="theme-color"]');
-  const PAPER={light:"#faf9f5",dark:"#211d1b"};
+  const PAPER={light:"#C9DCF3",dark:"#070A38"};
   const applyTheme = () => { const t = localStorage.getItem("lucid_theme");
     if (t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme");
     const dark = t==="dark" || (!t && matchMedia("(prefers-color-scheme:dark)").matches);

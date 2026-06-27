@@ -4,90 +4,145 @@
    One coherent system. Class contract matches app.js.
    ============================================================ */
 :root{
-  /* ---- Type ---- */
+  /* ---- Type (unchanged) ---- */
   --font-sans:"Styrene B","Inter","Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --font-serif:"Tiempos Headline","Copernicus","Instrument Serif",Georgia,serif;
   --font-mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,monospace;
 
-  /* ---- Surfaces (warm oat, hue ~88) ---- */
-  --bg:oklch(0.965 0.008 88); --surface:oklch(0.992 0.004 88);
-  --surface-sunk:oklch(0.940 0.010 88); --surface-hi:oklch(1 0 0);
+  /* ---- Surfaces — translucent navy-tinted whites; the body backdrop refracts through ---- */
+  --bg:oklch(0.165 0.075 271);                 /* deep Midnight solid (under gradient + chrome color-mix) */
+  --surface:oklch(0.74 0.05 255 / 0.10);       /* PANEL frost — 10% cool-white over navy */
+  --surface-sunk:oklch(0.14 0.055 272 / 0.46); /* recessed wells read DARKER (inputs, tracks) */
+  --surface-hi:oklch(0.82 0.05 250 / 0.15);    /* raised/floating frost — brighter */
 
-  /* ---- Ink ramp (warm, hue ~65) ---- */
-  --ink:oklch(0.26 0.012 65); --ink-2:oklch(0.44 0.012 65);
-  --ink-3:oklch(0.53 0.012 65); --ink-4:oklch(0.66 0.010 70);
+  /* ---- Ink ramp — Light-Grey/Shuttle family, lifted for AA on glass (vibrancy via L, never alpha) ---- */
+  --ink:oklch(0.95 0.012 250);                 /* primary — crisp cool white (>12:1 AAA) */
+  --ink-2:oklch(0.84 0.018 247);               /* secondary ≈ Light Grey (~8:1 AAA) */
+  --ink-3:oklch(0.68 0.022 242);               /* muted — Shuttle lifted to clear AA (~5.2:1) */
+  --ink-4:oklch(0.56 0.022 240);               /* faint/disabled ≈ literal Shuttle Grey */
 
-  /* ---- Hairlines ---- */
-  --line:oklch(0.905 0.006 88); --line-strong:oklch(0.855 0.008 88);
+  /* ---- Hairlines — translucent white glass edges ---- */
+  --line:oklch(0.92 0.03 250 / 0.12);
+  --line-strong:oklch(0.96 0.03 250 / 0.22);
 
-  /* ---- Accent — Claude coral ---- */
-  --accent:oklch(0.67 0.13 45); --accent-hover:oklch(0.62 0.14 44);
-  --accent-press:oklch(0.57 0.14 43); --accent-ink:oklch(0.52 0.14 42);
-  --accent-quiet:oklch(0.955 0.028 55); --accent-line:oklch(0.86 0.06 50);
-  --on-accent:oklch(0.99 0.004 85);
+  /* ---- Accent — Maya Blue (the bright highlight + the only glow) ---- */
+  --accent:oklch(0.78 0.12 245);
+  --accent-hover:oklch(0.83 0.12 247);
+  --accent-press:oklch(0.72 0.12 244);
+  --accent-ink:oklch(0.83 0.11 248);           /* Maya as text/links on glass — AA bright */
+  --accent-quiet:oklch(0.62 0.10 250 / 0.18);  /* translucent Maya wash (active tab/chip bg) */
+  --accent-line:oklch(0.78 0.12 245 / 0.45);
+  --on-accent:oklch(0.16 0.055 270);           /* deep navy text ON a Maya fill (Maya is light → AA) */
 
-  /* ---- Semantic (warm, never tech-red) ---- */
-  --positive:oklch(0.62 0.09 150); --positive-ink:oklch(0.47 0.10 150);
-  --caution:oklch(0.72 0.11 75);   --caution-ink:oklch(0.55 0.12 70);
-  --critical:oklch(0.58 0.15 30);  --critical-ink:oklch(0.51 0.16 29);
+  /* ---- Semantic (cohere with the cool world; still legible) ---- */
+  --positive:oklch(0.80 0.13 168);  --positive-ink:oklch(0.85 0.12 168);
+  --caution:oklch(0.83 0.11 85);    --caution-ink:oklch(0.87 0.11 85);
+  --critical:oklch(0.69 0.17 25);   --critical-ink:oklch(0.78 0.15 25);
 
-  /* ---- Radii — small/editorial ---- */
-  --radius-xs:6px; --radius-sm:8px; --radius-md:10px; --radius-lg:14px; --radius-pill:999px;
+  /* ---- Radii — glass wants softer corners ---- */
+  --radius-xs:8px; --radius-sm:10px; --radius-md:14px; --radius-lg:18px; --radius-pill:999px;
 
-  /* ---- Shadow — minimal ---- */
+  /* ---- Drop shadows — navy-black, low alpha, WITH the glass "lip" (inset top highlight) baked in ---- */
   --shadow-none:none;
-  --shadow-xs:0 1px 2px oklch(0.3 0.02 60/0.05);
-  --shadow-sm:0 1px 2px oklch(0.3 0.02 60/0.05), 0 2px 6px oklch(0.3 0.02 60/0.05);
-  --shadow-pop:0 4px 12px oklch(0.25 0.02 60/0.08), 0 16px 40px oklch(0.25 0.02 60/0.12);
+  --shadow-xs:inset 0 1px 0 oklch(1 0 0/0.08), 0 1px 2px oklch(0.04 0.05 272/0.40);
+  --shadow-sm:inset 0 1px 0 oklch(1 0 0/0.10), 0 1px 2px oklch(0.04 0.05 272/0.42), 0 6px 18px oklch(0.03 0.04 272/0.42);
+  --shadow-pop:inset 0 1px 0 oklch(1 0 0/0.14), 0 10px 28px oklch(0.02 0.04 272/0.55), 0 28px 64px oklch(0.02 0.03 272/0.62);
 
-  /* ---- Spacing ---- */
+  /* ---- LIQUID GLASS MATERIAL tokens ---- */
+  --glass-blur:28px; --glass-blur-strong:36px; --glass-blur-soft:16px;
+  --glass-sat:165%;
+  --glass-fill:var(--surface);
+  --glass-fill-strong:var(--surface-hi);
+  --glass-fill-deep:oklch(0.16 0.06 270 / 0.62);   /* sticky-chrome scrim — blends into body */
+  --glass-border:var(--line);
+  --glass-border-strong:var(--line-strong);
+  --glass-lip:inset 0 1px 0 oklch(1 0 0/0.14);
+  --glass-lip-soft:inset 0 1px 0 oklch(1 0 0/0.10);
+  --glass-sheen:linear-gradient(180deg, oklch(1 0 0/0.10), oklch(1 0 0/0) 42%);
+
+  /* ---- Accent GLOW (Maya halo) ---- */
+  --glow-accent:0 0 16px oklch(0.80 0.13 246/0.45), 0 0 44px oklch(0.80 0.13 246/0.22);
+  --glow-accent-soft:0 0 12px oklch(0.80 0.13 246/0.32);
+
+  /* ---- App backdrop (body::before painted with this) ---- */
+  --app-backdrop:
+    radial-gradient(125% 85% at 50% -12%, oklch(0.34 0.11 262/0.55), transparent 58%),
+    radial-gradient(85% 60% at 88% 4%,   oklch(0.62 0.12 245/0.16), transparent 52%),
+    radial-gradient(110% 95% at 6% 106%, oklch(0.24 0.10 276/0.55), transparent 60%),
+    linear-gradient(176deg, oklch(0.175 0.085 270), oklch(0.123 0.065 273) 72%);
+
+  /* ---- Spacing / type scale / motion (UNCHANGED from original) ---- */
   --space-0:2px; --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
   --space-5:20px; --space-6:24px; --space-7:32px; --space-8:40px; --space-9:48px; --space-10:64px;
-
-  /* ---- Type scale ~1.2 ---- */
   --text-display:2rem; --text-h1:1.5rem; --text-h2:1.25rem; --text-h3:1.0625rem;
   --text-body:0.9375rem; --text-sm:0.8125rem; --text-xs:0.75rem; --text-2xs:0.6875rem;
   --ls-display:-0.02em; --ls-tight:-0.012em; --ls-over:0.07em;
   --w-reg:400; --w-med:500; --w-semi:600; --w-bold:700;
-
-  /* ---- Motion ---- */
   --ease:cubic-bezier(0.2,0.7,0.3,1); --ease-inout:cubic-bezier(0.4,0,0.2,1);
   --dur-fast:120ms; --dur:200ms; --dur-slow:280ms;
-
   --focus:var(--accent); --maxw:720px; --maxw-wide:1080px; --nav-h:60px; --tap:44px;
-  color-scheme:light;
+  color-scheme:dark;
 
-  /* ---- Back-compat aliases (keep app.js + every legacy class green) ---- */
+  /* ---- Event-kind / timeline hues — recolored into the blue family ---- */
+  --decision:oklch(0.72 0.10 286); --question:oklch(0.76 0.11 235);
+  --topic:oklch(0.74 0.09 252);    --action:var(--positive);
+  --moment:var(--ink);             --tension:var(--critical);
+
+  /* ---- BACK-COMPAT ALIASES — names byte-identical to original 61–72; only the sources moved ---- */
   --serif:var(--font-serif); --sans:var(--font-sans);
   --paper:var(--bg); --card:var(--surface); --sink:var(--surface-sunk); --sink-2:var(--surface-sunk);
   --ink-soft:var(--ink-2); --muted:var(--ink-3); --faint:var(--ink-4);
   --line-2:var(--line); --accent-soft:var(--accent-quiet);
   --radius:var(--radius-lg);
-  --sh:var(--shadow-sm); --sh-soft:var(--shadow-xs); --sh-card:var(--shadow-xs); --sh-lg:var(--shadow-pop);
+  --sh:var(--shadow-sm); --sh-soft:var(--shadow-xs); --sh-card:var(--shadow-sm); --sh-lg:var(--shadow-pop);
   --pos:var(--positive); --neu:var(--ink-3); --ten:var(--critical);
   --text:var(--ink); --primary:var(--ink); --primary-ink:var(--bg);
-  /* timeline / event-kind hues — muted toward neutral so the dossier reads calm */
-  --decision:oklch(0.56 0.06 280); --question:oklch(0.58 0.06 235);
-  --topic:oklch(0.66 0.09 70); --action:var(--positive);
-  --moment:var(--ink); --tension:var(--critical);
 }
-[data-theme="dark"], html[data-theme="dark"]{
-  --bg:oklch(0.205 0.008 70); --surface:oklch(0.245 0.009 70);
-  --surface-sunk:oklch(0.185 0.008 70); --surface-hi:oklch(0.275 0.010 70);
-  --ink:oklch(0.94 0.006 85); --ink-2:oklch(0.78 0.008 80);
-  --ink-3:oklch(0.64 0.010 75); --ink-4:oklch(0.52 0.010 75);
-  --line:oklch(0.31 0.008 70); --line-strong:oklch(0.38 0.009 70);
-  --accent:oklch(0.72 0.13 48); --accent-hover:oklch(0.77 0.13 50);
-  --accent-press:oklch(0.68 0.13 47); --accent-ink:oklch(0.80 0.12 52);
-  --accent-quiet:oklch(0.32 0.05 45); --accent-line:oklch(0.42 0.07 47);
-  --on-accent:oklch(0.20 0.02 60);
-  --positive:oklch(0.72 0.10 150); --positive-ink:oklch(0.78 0.11 150);
-  --caution:oklch(0.78 0.11 75);   --caution-ink:oklch(0.82 0.11 72);
-  --critical:oklch(0.66 0.15 31);  --critical-ink:oklch(0.74 0.15 31);
-  --shadow-xs:0 1px 2px oklch(0 0 0/0.28);
-  --shadow-sm:0 1px 2px oklch(0 0 0/0.28), 0 2px 8px oklch(0 0 0/0.30);
-  --shadow-pop:0 6px 16px oklch(0 0 0/0.40), 0 24px 60px oklch(0 0 0/0.52);
-  color-scheme:dark;
+
+/* Explicit dark pick = the default (so the toggle's "dark" state is unambiguous) */
+[data-theme="dark"], html[data-theme="dark"]{ color-scheme:dark; }
+
+/* ===== DAYLIGHT GLASS — the lighter "light" toggle pick (navy/blue frosted glass, dark ink) ===== */
+[data-theme="light"]{
+  --bg:oklch(0.93 0.025 248);
+  --surface:oklch(0.99 0.012 250 / 0.58);
+  --surface-sunk:oklch(0.80 0.03 250 / 0.50);
+  --surface-hi:oklch(1 0 0 / 0.72);
+
+  --ink:oklch(0.26 0.04 265); --ink-2:oklch(0.40 0.04 262);
+  --ink-3:oklch(0.46 0.035 255); --ink-4:oklch(0.60 0.028 250);
+
+  --line:oklch(0.30 0.05 265 / 0.16); --line-strong:oklch(0.28 0.06 265 / 0.28);
+
+  /* Maya is too light on a bright field → accent shifts to Mariner for AA */
+  --accent:oklch(0.55 0.13 255); --accent-hover:oklch(0.50 0.14 256);
+  --accent-press:oklch(0.45 0.14 256); --accent-ink:oklch(0.47 0.14 258);
+  --accent-quiet:oklch(0.70 0.10 250 / 0.22); --accent-line:oklch(0.55 0.13 255 / 0.42);
+  --on-accent:oklch(0.99 0.01 250);
+
+  --positive:oklch(0.58 0.12 165); --positive-ink:oklch(0.46 0.12 165);
+  --caution:oklch(0.74 0.12 80);   --caution-ink:oklch(0.52 0.12 70);
+  --critical:oklch(0.58 0.17 27);  --critical-ink:oklch(0.50 0.18 27);
+
+  --shadow-xs:inset 0 1px 0 oklch(1 0 0/0.50), 0 1px 2px oklch(0.45 0.06 262/0.10);
+  --shadow-sm:inset 0 1px 0 oklch(1 0 0/0.55), 0 1px 2px oklch(0.45 0.06 262/0.10), 0 8px 22px oklch(0.45 0.07 262/0.14);
+  --shadow-pop:inset 0 1px 0 oklch(1 0 0/0.65), 0 12px 30px oklch(0.40 0.07 262/0.18), 0 28px 64px oklch(0.40 0.06 262/0.20);
+
+  --glass-fill-deep:oklch(0.96 0.02 250 / 0.66);
+  --glass-lip:inset 0 1px 0 oklch(1 0 0/0.65); --glass-lip-soft:inset 0 1px 0 oklch(1 0 0/0.50);
+  --glass-sheen:linear-gradient(180deg, oklch(1 0 0/0.45), oklch(1 0 0/0) 42%);
+  --glow-accent:0 0 16px oklch(0.55 0.13 255/0.35), 0 0 40px oklch(0.55 0.13 255/0.18);
+  --glow-accent-soft:0 0 12px oklch(0.55 0.13 255/0.24);
+
+  --app-backdrop:
+    radial-gradient(125% 85% at 50% -12%, oklch(0.95 0.05 250/0.95), transparent 58%),
+    radial-gradient(85% 60% at 88% 4%,   oklch(0.86 0.09 245/0.55), transparent 52%),
+    radial-gradient(110% 95% at 6% 106%, oklch(0.90 0.05 262/0.80), transparent 60%),
+    linear-gradient(176deg, oklch(0.96 0.02 250), oklch(0.90 0.035 255) 75%);
+
+  --decision:oklch(0.52 0.13 286); --question:oklch(0.50 0.13 248);
+  --topic:oklch(0.50 0.10 255);
+  color-scheme:light;
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;}
@@ -467,7 +522,7 @@ audio{width:100%;height:38px;}
 .pcard.picked{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent) inset,var(--sh-soft);}
 .pcard.picked .pcheck{background:var(--accent);color:var(--on-accent);border-color:var(--accent);}
 .selbar{position:sticky;bottom:14px;margin-top:14px;display:flex;align-items:center;gap:10px;
-  background:var(--ink);color:var(--paper);border-radius:99px;box-shadow:var(--sh-lg);padding:10px 14px;}
+  background:var(--ink);color:var(--ink);border-radius:99px;box-shadow:var(--sh-lg);padding:10px 14px;}
 .selbar span{flex:1;font-size:13px;font-weight:600;}
 .selbar .btn{height:38px;margin:0;background:var(--paper);color:var(--ink);}
 .selbar .btn.ghost{background:transparent;color:var(--paper);border-color:oklch(1 0 0/0.4);}
@@ -598,7 +653,7 @@ audio{width:100%;height:38px;}
   .feed{gap:12px;}
 }
 
-/* ===== Design system v2 (tokens) ===== */
+/* ===== Design system v2 (tokens) — only the color-bearing values changed ===== */
 :root{
   --t-display:2.125rem; --t-h1:1.875rem; --t-h2:1.375rem; --t-title:1.1875rem;
   --t-lead:1.0625rem; --t-body:1rem; --t-sec:0.875rem; --t-meta:0.8125rem;
@@ -606,16 +661,17 @@ audio{width:100%;height:38px;}
   --lh-tight:1.08; --lh-snug:1.28; --lh-body:1.5; --lh-prose:1.6;
   --tr-display:-0.015em; --tr-cap:0.08em;
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
-  --pos-ink:oklch(0.52 0.13 155); --ten-ink:oklch(0.53 0.18 28); --neu-ink:oklch(0.50 0.025 80);
-  --accent-strong:oklch(0.52 0.15 42); --on-accent:oklch(0.99 0.005 60);
+  /* dark defaults: "ink" semantics are now the BRIGHT-on-navy variants */
+  --pos-ink:oklch(0.85 0.12 168); --ten-ink:oklch(0.78 0.15 25); --neu-ink:oklch(0.78 0.02 245);
+  --accent-strong:var(--accent); --on-accent:oklch(0.16 0.055 270);
   --tabbar-h:60px;
-  color-scheme:light;
-}
-[data-theme="dark"]{
-  --pos-ink:oklch(0.82 0.13 155); --ten-ink:oklch(0.80 0.15 28); --neu-ink:oklch(0.78 0.02 80);
-  --neu:oklch(0.66 0.03 80); --accent-strong:var(--accent); --on-accent:oklch(0.20 0.03 50);
-  --sh-card:0 1px 2px oklch(0 0 0/0.30), 0 18px 48px oklch(0 0 0/0.46);
   color-scheme:dark;
+}
+[data-theme="light"]{
+  --pos-ink:oklch(0.46 0.12 165); --ten-ink:oklch(0.50 0.18 27); --neu-ink:oklch(0.42 0.03 255);
+  --neu:oklch(0.50 0.025 255); --accent-strong:var(--accent); --on-accent:oklch(0.99 0.01 250);
+  --sh-card:var(--shadow-sm);
+  color-scheme:light;
 }
 
 /* type + measure */
@@ -1058,8 +1114,8 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
 
 @media (max-width:760px){
   /* swap the 48px-blur card shadow for a cheaper one — rasterizes far faster */
-  :root{ --sh-card:0 1px 2px oklch(0.4 0.02 60/0.05), 0 6px 16px oklch(0.4 0.02 60/0.08); }
-  [data-theme="dark"]{ --sh-card:0 1px 2px oklch(0 0 0/0.30), 0 6px 16px oklch(0 0 0/0.42); }
+  :root{ --sh-card:inset 0 1px 0 oklch(1 0 0/0.08), 0 1px 2px oklch(0.04 0.05 272/0.40), 0 6px 16px oklch(0.03 0.04 272/0.42); }
+  [data-theme="light"]{ --sh-card:inset 0 1px 0 oklch(1 0 0/0.50), 0 1px 2px oklch(0.45 0.06 262/0.10), 0 6px 16px oklch(0.45 0.07 262/0.14); }
   /* skip layout/paint for off-screen feed cards (long Notes/CRM lists) */
   .feed>.rcard,.feed>.crmcard,.feed>.pcard{ content-visibility:auto; contain-intrinsic-size:auto 96px; }
 }
@@ -1613,3 +1669,329 @@ button,a,.cta,.qcta,.chip.tap,.fchip,.seg,.backlink,.seeall{ touch-action:manipu
 /* blank sentiment tile on a note card gets the ∿ mark (matches detail/Brief glyph) */
 .notecard .tile::after{ display:block; content:"\223F"; position:static; width:auto; height:auto; border:none;
   font-size:22px; line-height:1; color:color-mix(in oklch,var(--mc,var(--ink-4)) 55%,var(--ink-2)); }
+
+/* ============================================================
+   LUCID — MIDNIGHT EXPRESS · LIQUID GLASS  ::  MATERIAL + COMPONENT GLASS
+   Appended last → wins on source order. Restyles material/color only;
+   every class name is the real one. Token-driven so [data-theme="light"]
+   flips automatically except the few navy-literal insets flagged inline.
+   ============================================================ */
+
+/* ===== §A · MIDNIGHT BODY BACKDROP =====
+   Fixed body::before (NOT background-attachment:fixed — janks on iOS) gives the
+   blur a stable Midnight field to refract. body's solid --bg paints first;
+   ::before(z-index:-1) layers the live gradient above it, app content above that. */
+body{ background:var(--bg); }
+body::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:var(--app-backdrop);background-color:var(--bg);
+}
+
+/* ===== §B · CANONICAL GLASS UTILITY LAYER (three elevation tiers) ===== */
+.glass-backdrop{                                   /* TIER 1 — sticky chrome, no lip */
+  background:var(--glass-fill-deep);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+}
+.glass-panel{                                      /* TIER 2 — workhorse frosted card */
+  position:relative;background:var(--glass-fill);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);border-radius:var(--radius-lg);
+}
+.glass-floating{                                   /* TIER 3 — bars, sheets, FAB, toast */
+  position:relative;background:var(--glass-fill-strong);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-strong));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-strong));
+  border:1px solid var(--glass-border-strong);box-shadow:var(--shadow-pop);border-radius:var(--radius-lg);
+}
+.glass-floating::before,.glass-sheen::before{      /* tasteful specular lip-sheen */
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:var(--glass-sheen);mix-blend-mode:screen;opacity:.7;
+}
+
+/* ===== §C · MATERIAL GRAFT onto real components (deduplicated; one fill+blur per selector) ===== */
+
+/* TIER 1 — sticky chrome scrims (supersedes appbar bg @106, lucidbar blur @1360, searchhead blur @1216) */
+.appbar,.lucidbar,.searchhead{
+  background:var(--glass-fill-deep);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-bottom:1px solid var(--glass-border);
+}
+.view.detail .tabs::before{                        /* sticky detail-tab scrim @1075 */
+  background:var(--glass-fill-deep);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+}
+
+/* TIER 2 — content cards/panels/rows. NO `border` shorthand (preserves per-card 3px spines). */
+.rcard,.pcard,.vcard,.dircard,.crmcard,.notecard,.idea-card,.idea,.panel,.player,.mapwrap,
+.statcard,.owerow,.revrow,.evpill,.tcard,.reviewcta,.rvqueue,.welcome-card,.sharebox,.linkrow{
+  background:var(--surface);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+}
+/* panel-nested raised tiles — sit ON already-blurred panels, so NO own blur */
+.qcard,.sq{ background:var(--surface-hi); box-shadow:var(--shadow-xs); }
+
+/* TIER 3 — floating chrome (supersedes tabbar bg @1343/@214) */
+.tabbar,.sheet,.chatsheet,.namecard,.selbar,.login-card{
+  background:var(--glass-fill-strong);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-strong));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-strong));
+  border:1px solid var(--glass-border-strong);
+  box-shadow:var(--shadow-pop);
+}
+.fab,.toast{
+  background:var(--glass-fill-strong);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-strong));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-strong));
+  border:1px solid var(--glass-border-strong);
+}
+.sheet{ border-bottom:none; border-radius:22px 22px 0 0; }
+.chatsheet,.namecard{ border-radius:22px 22px 0 0; }
+.tabbar{ box-shadow:var(--shadow-pop); }           /* re-assert over @1343 */
+
+/* recessed wells stay DARK glass, not frost */
+.scrub,.summarybox,.tabs,.segtoggle,.seg-lucid{ background:var(--surface-sunk); }
+
+/* ===== §D · COMPONENT DETAIL (bespoke fills / borders / ink) ===== */
+
+/* — SHELL: brand chip, icon buttons, Work pill, masthead refresh, seg control — */
+.brand .rx{                                        /* flat ink square → frosted Maya chip */
+  background:linear-gradient(158deg, var(--accent-quiet), oklch(0.70 0.12 245/0.10));
+  color:var(--accent-ink);border:1px solid var(--accent-line);
+  box-shadow:var(--glass-lip-soft), var(--glow-accent-soft);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+}
+.appbar .brand:active .rx{ box-shadow:var(--glass-lip-soft), var(--glow-accent); }
+.brand .wordmark{ color:var(--ink); }
+.appbar .sub{ color:var(--ink-3); }
+.greeting{ color:var(--ink-3); }
+.hero h1{ color:var(--ink); } .hero h1 .count{ color:var(--ink-3); }
+.hero .stats{ color:var(--ink-3); } .hero .stats b{ color:var(--ink); }
+.hero .dateline{ color:var(--ink-2); } .hero .dateline::after{ background:var(--line); }
+.hero .dateline .fresh{ color:var(--ink-3); }
+
+.iconbtn,.iconbtn.pill,.mast-refresh,.sheet-close,.rev-x,.qread,.rv-dismiss{
+  background:var(--surface);border:1px solid var(--glass-border);color:var(--ink-3);
+  box-shadow:var(--glass-lip-soft), var(--shadow-xs);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+}
+.iconbtn{ color:var(--ink-2); }
+.iconbtn:hover,.mast-refresh:hover,.sheet-close:hover{ color:var(--ink); border-color:var(--line-strong); background:var(--surface-hi); }
+.iconbtn:active{ transform:scale(.93); }
+.iconbtn.on,.iconbtn.pill.on{ color:var(--accent-ink); border-color:var(--accent-line);
+  background:var(--accent-quiet); box-shadow:var(--glass-lip-soft), var(--glow-accent-soft); }
+.mast-refresh:hover{ color:var(--accent-ink); border-color:var(--accent-line);
+  box-shadow:var(--glass-lip-soft), var(--glow-accent-soft); }
+
+.seg-lucid{ border:1px solid var(--line); box-shadow:inset 0 1px 2px oklch(0.04 0.05 272/0.35); }
+.seg-lucid button{ color:var(--ink-3); }
+.seg-lucid button:hover{ color:var(--ink-2); }
+.seg-lucid button.on{ background:var(--surface-hi); color:var(--ink);
+  box-shadow:var(--glass-lip), var(--glow-accent-soft);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft)); }
+.seg-lucid button.on .seg-ic{ color:var(--accent); opacity:1; }
+
+/* small filter controls frost too */
+.fchip,.sortsel select,.spkchip{
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+  background:var(--surface);border:1px solid var(--line);
+}
+
+/* — BUTTONS — base = inverted bright neutral; primary = Maya glass that glows; ghost = frosted — */
+.btn{ background:var(--ink);color:var(--bg);border:1px solid transparent;box-shadow:var(--shadow-xs); }
+.btn:hover{ box-shadow:var(--shadow-sm); }
+.btn[disabled]{ opacity:.42;pointer-events:none;box-shadow:none; }
+.btn.primary{ background:var(--accent);color:var(--on-accent);border-color:var(--accent-line);
+  box-shadow:var(--glass-lip), var(--shadow-xs), var(--glow-accent-soft); }
+.btn.primary:hover{ background:var(--accent-hover); box-shadow:var(--glass-lip), var(--shadow-sm), var(--glow-accent); }
+.btn.primary:active{ background:var(--accent-press); box-shadow:var(--glass-lip), var(--shadow-xs), var(--glow-accent-soft); }
+.btn.ghost,.btn.danger{ background:var(--surface);color:var(--ink-2);border:1px solid var(--glass-border);
+  box-shadow:var(--glass-lip-soft);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur)); }
+.btn.ghost:hover{ color:var(--ink);border-color:var(--accent-line);background:var(--surface-hi);
+  box-shadow:var(--glass-lip-soft), var(--glow-accent-soft); }
+.btn.danger:hover{ border-color:var(--critical);color:var(--critical-ink);
+  box-shadow:var(--glass-lip-soft), 0 0 14px oklch(0.69 0.17 25/0.30); }
+
+/* inline CTA family — the only other glowing things */
+.cta.solid,.qcta.solid,.proof,.csend{ box-shadow:var(--glass-lip-soft), var(--shadow-xs), var(--glow-accent-soft); }
+.cta.solid:hover,.qcta.solid:hover{ box-shadow:var(--glass-lip-soft), var(--shadow-sm), var(--glow-accent); }
+.cta.line{ background:var(--surface);border:1px solid var(--glass-border); }
+.cta.line:hover{ border-color:var(--accent-line);box-shadow:var(--glow-accent-soft); }
+.csend{ background:var(--accent);color:var(--on-accent); }
+.csend:hover{ filter:none;background:var(--accent-hover);box-shadow:var(--glass-lip), var(--glow-accent); }
+.spin,.spin-lg{ border-color:var(--line-strong);border-top-color:var(--accent); }
+
+/* — INPUTS = recessed dark-glass wells (NOT frost); Maya focus handled in §F — */
+.field input,.field select,.nameinput,.chatinput input,.searchwrap input,.sortsel select,.login-card input{
+  background:var(--surface-sunk);color:var(--ink);border:1px solid var(--glass-border);
+  box-shadow:inset 0 1px 2px oklch(0.04 0.05 272/0.35);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft)); }
+.field input::placeholder,.nameinput::placeholder,.chatinput input::placeholder,.searchwrap input::placeholder{ color:var(--ink-4); }
+
+/* — LOGIN + OTP code field (premium mono, tracking-balanced, Maya caret) — */
+.login-card{ border-radius:var(--radius-lg);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-strong));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-strong)); }
+.login-card .lock{ filter:drop-shadow(var(--glow-accent-soft)); }
+.login-card input[inputmode="numeric"]{
+  font-family:var(--font-mono);font-size:24px;font-weight:var(--w-med);
+  letter-spacing:.34em;text-indent:.34em;text-align:center;        /* text-indent rebalances optical center */
+  color:var(--ink);caret-color:var(--accent);font-variant-numeric:tabular-nums;
+  border-radius:var(--radius-md);background:var(--surface-sunk);
+  box-shadow:inset 0 1px 3px oklch(0.04 0.05 272/0.45); }
+.login-card input[inputmode="numeric"]:focus{ border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-quiet), var(--glow-accent), inset 0 1px 3px oklch(0.04 0.05 272/0.35); }
+.login-card input.shake{ border-color:var(--critical);
+  box-shadow:0 0 0 3px oklch(0.69 0.17 25/0.18), 0 0 16px oklch(0.69 0.17 25/0.35); }
+
+/* — OVERLAYS: scrims, sheet internals, chat bubbles, toast, selbar — */
+.sheet-bg,.namepick .bg{ background:var(--scrim, oklch(0.06 0.05 272/0.58));
+  -webkit-backdrop-filter:blur(3px) saturate(120%);backdrop-filter:blur(3px) saturate(120%); }
+.sheet-grab{ background:var(--line-strong); } .sheet-grab::before{ background:var(--line-strong); }
+.sheet-head{ border-bottom:1px solid var(--glass-border); }
+.sheet-body h3::after{ background:var(--glass-border); }
+.namecard::before,.toast::before{ content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:var(--glass-sheen);mix-blend-mode:screen;opacity:.7; }   /* sheen on non-scrolling floating glass only */
+.cmsg.me{ background:var(--accent-quiet);color:var(--accent-ink);border:1px solid var(--accent-line); }
+.cmsg.ai{ background:var(--surface);border:1px solid var(--glass-border);color:var(--ink);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft)); }
+.toast{ color:var(--ink); }
+.toast-act{ color:var(--accent-ink); } .toast-act:hover{ text-decoration:underline;text-decoration-color:var(--accent-line); }
+.selbar .btn{ background:var(--ink);color:var(--bg); }                        /* was var(--paper)=navy → broken */
+.selbar .btn.ghost{ background:transparent;color:var(--ink);border-color:var(--line-strong); }
+
+/* — VBARS as a carved liquid channel; CRM stage bar stays open — */
+.vbar{ background:var(--surface-sunk); box-shadow:inset 0 1px 2px oklch(0.04 0.05 272/0.45); }
+.vbar span{ box-shadow:inset 0 1px 0 oklch(1 0 0/0.18); }
+.vbar.empty{ opacity:.4; }
+.stagebar .vbar{ background:transparent; box-shadow:none; }
+
+/* — SKELETON shimmer recolored to navy glass — */
+.sk{ background:var(--surface);border:1px solid var(--glass-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-xs);
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+          backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft)); }
+.sk .c,.sk .b{ background:var(--surface-sunk); }
+.shimmer{ background:linear-gradient(100deg, var(--surface-sunk) 18%, var(--surface-hi) 50%, var(--surface-sunk) 82%);
+  background-size:220% 100%; animation:shimmer 1.4s var(--ease-inout) infinite; }
+
+/* — MICRO-TILES / interior rows — */
+.tile,.rv-chip{ box-shadow:var(--glass-lip-soft); }
+.qrow:hover{   background:color-mix(in oklch,var(--surface-hi) 70%,transparent); }
+.rvitem:hover{ background:color-mix(in oklch,var(--surface-hi) 60%,transparent); }
+.minirow:hover{ background:color-mix(in oklch,var(--surface-hi) 55%,transparent); }
+
+/* — ACTIVITY ROWS: keep spines, add glass hover + Done states — */
+.owerow{ border-left:3px solid var(--mc,var(--accent)); }
+.revrow{ border-left:3px solid var(--ink-4); }
+.owerow:hover{ transform:translateY(-1px); box-shadow:var(--shadow-sm), var(--glow-accent-soft); border-left-color:var(--mc,var(--accent)); }
+.owerow .ow-sit,.rev-why{ color:var(--ink-2); }
+.rev-x:hover{ border-color:var(--critical);color:var(--critical-ink);box-shadow:0 0 12px oklch(0.69 0.17 25/0.28); }
+.qread:hover,.rv-dismiss:hover{ border-color:var(--positive);color:var(--positive-ink);background:var(--surface-hi);box-shadow:0 0 12px oklch(0.80 0.13 168/0.30); }
+.rv-dismiss.done,.qread.done,.cta.solid.ok{ background:var(--positive);border-color:var(--positive);color:var(--on-accent);
+  box-shadow:var(--glass-lip), 0 0 16px oklch(0.80 0.13 168/0.45), 0 0 40px oklch(0.80 0.13 168/0.20); }
+
+/* ===== §E · MAYA ACCENT GLOW (Maya is the only thing that glows) ===== */
+.tabbar button{ color:var(--ink-3); } .tabbar button:hover{ color:var(--ink-2); }
+.tabbar button.active{ background:var(--accent-quiet);color:var(--accent-ink);
+  box-shadow:inset 0 0 0 1px var(--accent-line), var(--glow-accent-soft); }
+.tabbar button.active::after{ background:var(--dot); box-shadow:0 0 6px var(--dot); }   /* per-domain dot keeps its hue+glow (C1) */
+.fab{ box-shadow:var(--shadow-pop), var(--glow-accent); }                                /* loudest glow in the app */
+.playing{ outline:2.5px solid var(--accent); outline-offset:2px; box-shadow:var(--glow-accent); }
+.statcard.on{ box-shadow:var(--shadow-xs), var(--glow-accent-soft); }
+.fchip.on{ background:var(--accent-quiet);color:var(--accent-ink);border-color:var(--accent-line);box-shadow:var(--glow-accent-soft); }
+.fchip.on .fn{ background:color-mix(in oklch,var(--accent) 26%,transparent); color:var(--accent-ink); }
+
+/* ===== §F · FOCUS RINGS — single source (Maya) ===== */
+:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+.btn:focus-visible,.cta:focus-visible,.qcta:focus-visible,.proof:focus-visible,.csend:focus-visible,.fab:focus-visible{
+  outline:2px solid var(--accent); outline-offset:3px; box-shadow:var(--glow-accent-soft); }
+.tabbar button:focus-visible,.iconbtn:focus-visible{ outline-offset:3px; }
+.rcard:focus-visible,.pcard:focus-visible,.crmcard:focus-visible,.vcard:focus-visible,.dircard:focus-visible{
+  outline-offset:3px; border-radius:var(--radius-lg); }
+.searchwrap input:focus,.field input:focus,.field select:focus,.nameinput:focus,.chatinput input:focus,.login-card input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-quiet), var(--glow-accent-soft), inset 0 1px 2px oklch(0.04 0.05 272/0.25); outline:none; }
+
+/* ===== §G · DAYLIGHT GLASS DELTAS (only where a navy-literal would read wrong) ===== */
+[data-theme="light"]{ --scrim:oklch(0.30 0.05 265/0.30); }
+[data-theme="light"] .seg-lucid{ box-shadow:inset 0 1px 2px oklch(0.45 0.06 262/0.12); }
+[data-theme="light"] .brand .rx{ background:linear-gradient(158deg, var(--accent-quiet), oklch(0.86 0.09 245/0.18)); }
+[data-theme="light"] .vbar{ box-shadow:inset 0 1px 2px oklch(0.45 0.06 262/0.14); }
+[data-theme="light"] .qrow:hover{   background:color-mix(in oklch,var(--accent) 8%,transparent); }
+[data-theme="light"] .rvitem:hover{ background:color-mix(in oklch,var(--accent) 7%,transparent); }
+[data-theme="light"] .minirow:hover{ background:color-mix(in oklch,var(--accent) 6%,transparent); }
+
+/* ===== §H · CAPABILITY / A11Y FALLBACKS (merged; extend the file's @884 + @922 guards) ===== */
+
+/* H1 · prefers-reduced-transparency → solid panels, zero blur */
+@media (prefers-reduced-transparency:reduce){
+  :root{ --surface:oklch(0.235 0.045 268); --surface-hi:oklch(0.285 0.05 265); --surface-sunk:oklch(0.175 0.05 270);
+    --line:oklch(0.42 0.03 250); --line-strong:oklch(0.52 0.03 250);
+    --glass-fill:var(--surface); --glass-fill-strong:var(--surface-hi);
+    --glass-fill-deep:oklch(0.16 0.06 270); --accent-quiet:oklch(0.32 0.06 250); }
+  [data-theme="light"]{ --surface:oklch(0.985 0.012 250); --surface-hi:#fff; --surface-sunk:oklch(0.92 0.02 250);
+    --line:oklch(0.78 0.02 255); --line-strong:oklch(0.70 0.03 255);
+    --glass-fill-deep:oklch(0.97 0.01 250); --accent-quiet:oklch(0.88 0.05 250); }
+  .glass-backdrop,.glass-panel,.glass-floating,.appbar,.lucidbar,.searchhead,.tabbar,.sheet,.chatsheet,.namecard,
+  .fab,.toast,.selbar,.rcard,.pcard,.vcard,.dircard,.crmcard,.notecard,.idea-card,.idea,.panel,.player,.mapwrap,
+  .statcard,.owerow,.revrow,.evpill,.tcard,.reviewcta,.rvqueue,.welcome-card,.sharebox,.linkrow,
+  .iconbtn,.iconbtn.pill,.mast-refresh,.fchip,.sortsel select,.spkchip,.sheet-close,.rev-x,.qread,.rv-dismiss,
+  .seg-lucid button.on,.brand .rx,.btn.ghost,.btn.danger,.cmsg.ai,.sk,.login-card,
+  .field input,.field select,.nameinput,.chatinput input,.searchwrap input,.login-card input,
+  .view.detail .tabs::before{
+    -webkit-backdrop-filter:none!important;backdrop-filter:none!important; }
+  .glass-floating::before,.glass-sheen::before,.namecard::before,.toast::before{ display:none; }
+  .btn.primary,.cta.solid,.proof,.csend,.fab{ box-shadow:var(--shadow-xs); }   /* drop halo, keep depth */
+}
+
+/* H2 · No backdrop-filter support (extends the file's @922 guard) → solid surfaces */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  :root{ --surface:oklch(0.235 0.045 268); --surface-hi:oklch(0.285 0.05 265); --glass-fill-deep:oklch(0.16 0.06 270); }
+  [data-theme="light"]{ --surface:oklch(0.985 0.012 250); --surface-hi:#fff; --glass-fill-deep:oklch(0.97 0.01 250); }
+  .appbar,.lucidbar,.searchhead{ background:var(--glass-fill-deep); }
+  .tabbar,.sheet,.chatsheet,.namecard,.fab,.toast,.selbar,.login-card{ background:var(--glass-fill-strong); }
+  .rcard,.pcard,.vcard,.dircard,.crmcard,.notecard,.idea-card,.idea,.panel,.statcard,.owerow,.revrow,.evpill,
+  .tcard,.reviewcta,.rvqueue,.welcome-card,.sharebox,.linkrow,.sk,.btn.ghost{ background:var(--surface); }
+  .field input,.field select,.nameinput,.chatinput input,.searchwrap input,.login-card input{ background:var(--surface-sunk); }
+}
+
+/* H3 · prefers-reduced-motion (file already kills transitions/anim @650/@665/@1071) */
+@media (prefers-reduced-motion:reduce){
+  .glass-floating::before,.glass-sheen::before,.namecard::before,.toast::before{ opacity:.5; }
+}
+
+/* H4 · forced-colors — let the OS own color; keep structure (extends @884) */
+@media (forced-colors:active){
+  .glass-backdrop,.glass-panel,.glass-floating,.appbar,.tabbar,.lucidbar,.searchhead,.seg-lucid,.sheet,.namecard,
+  .toast,.selbar,.panel,.rcard,.crmcard,.iconbtn,.field input,.login-card input,.owerow,.revrow,.sk{
+    background:Canvas; border:1px solid CanvasText; box-shadow:none!important;
+    -webkit-backdrop-filter:none;backdrop-filter:none; }
+  .tabbar button.active,.iconbtn.on,.iconbtn.pill.on,.seg-lucid button.on,.btn.primary,.cta.solid{
+    forced-color-adjust:none; background:Highlight; color:HighlightText; }
+}
+
+/* ===== §I · MERGED MOBILE BLUR (supersedes hardcoded @919-920; chrome stays, cards soften) ===== */
+@media (max-width:760px){
+  .appbar,.lucidbar{
+    -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft));
+            backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur-soft)); }
+  .tabbar{
+    -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+            backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur)); }
+  .rcard,.pcard,.vcard,.dircard,.crmcard,.notecard,.idea-card,.idea,.panel,.statcard,.owerow,.revrow,.evpill,
+  .tcard,.reviewcta,.rvqueue,.welcome-card,.sharebox,.linkrow{
+    -webkit-backdrop-filter:saturate(150%) blur(var(--glass-blur-soft));
+            backdrop-filter:saturate(150%) blur(var(--glass-blur-soft)); }
+}
