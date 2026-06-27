@@ -88,20 +88,26 @@ const App = (() => {
   document.querySelectorAll(".appbar [data-nav]").forEach(b=>b.onclick=()=>go("/"+b.dataset.nav));
 
   function route(){ clearPoll(); __navPaint=true; window.scrollTo(0,0); const p=location.pathname;
+    // Old top-level routes fold into the Lucid hub — old links/bookmarks keep working.
+    const RD={"/notes":"/lucid/notes","/people":"/lucid/people","/directory":"/lucid/directory","/ventures":"/lucid/ideas"};
+    if (RD[p]){ history.replaceState({},"",RD[p]); return route(); }
+    // Detail views — Lucid tab stays lit, hub switcher hidden.
     const m=p.match(/^\/r\/([\w-]+)/);
-    if (m){ setTab("notes"); return showDetail(m[1]); }
+    if (m){ setTab("lucid"); showLucidBar(false); return showDetail(m[1]); }
     const pm=p.match(/^\/people\/(.+)$/);
-    if (pm){ setTab("people"); return showPerson(decodeURIComponent(pm[1])); }
-    if (p==="/people"){ setTab("people"); return showPeople(); }
-    if (p==="/directory"){ setTab("people"); return showDirectory(); }
+    if (pm){ setTab("lucid"); showLucidBar(false); return showPerson(decodeURIComponent(pm[1])); }
     const vm=p.match(/^\/ventures\/(.+)$/);
-    if (vm){ setTab("ventures"); return showVenture(decodeURIComponent(vm[1])); }
-    if (p==="/ventures"){ setTab("ventures"); return showVentures(); }
-    // Notes = the recordings feed, moved off "/" so HOME can be the Brief.
-    // Falls back to showHome until the Notes-feed area lands showNotes().
-    if (p==="/notes"){ setTab("notes"); return (typeof showNotes==="function"?showNotes:showHome)(); }
+    if (vm){ setTab("lucid"); showLucidBar(false); return showVenture(decodeURIComponent(vm[1])); }
+    // The Lucid hub: /lucid, /lucid/notes|people|ideas, /lucid/directory.
+    const lm=p.match(/^\/lucid(?:\/([a-z]+))?$/);
+    if (lm){ setTab("lucid"); showLucidBar(true); let seg=lm[1];
+      if (seg==="directory"){ setLucidSeg("people"); return showDirectory(); }
+      if (!LUCID_SEGS.includes(seg)){ seg=lucidSeg; history.replaceState({},"","/lucid/"+seg); }
+      setLucidSeg(seg); return SEG_RENDER[seg](); }
+    // Tools + other domains hide the hub switcher.
+    showLucidBar(false);
     if (p==="/search"){ setTab("search"); return showSearch(); }
-    if (p==="/review"){ setTab("home"); return showReview(); }
+    if (p==="/review"){ setTab("review"); return showReview(); }
     if (p==="/settings"){ setTab("settings"); return showSettings(); }
     const cm=p.match(/^\/crm\/(.+)$/);
     if (cm){ setTab("crm"); return showCRMContact(decodeURIComponent(cm[1])); }
@@ -111,6 +117,29 @@ const App = (() => {
   // first paint after a route animates; poll/filter repaints don't
   function paintDone(){ const _v=app.querySelector('.view');
     if(__navPaint){ __navPaint=false; } else if(_v){ _v.classList.add('is-repaint'); } }
+
+  // ===== LUCID HUB — Notes · People · Ideas under one tab =====
+  const LUCID_SEGS=["notes","people","ideas"];
+  const SEG_RENDER={notes:showNotes, people:showPeople, ideas:showVentures};
+  let lucidSeg=(()=>{ const s=localStorage.getItem("lucid_seg"); return LUCID_SEGS.includes(s)?s:"notes"; })();
+  const lucidbarEl=document.getElementById("lucidbar");
+  function setLucidSeg(seg){
+    lucidSeg=LUCID_SEGS.includes(seg)?seg:"notes"; localStorage.setItem("lucid_seg",lucidSeg);
+    lucidbarEl&&lucidbarEl.querySelectorAll("[data-seg]").forEach(b=>{ const on=b.dataset.seg===lucidSeg;
+      b.classList.toggle("on",on); b.setAttribute("aria-selected",on?"true":"false"); });
+  }
+  function showLucidBar(on){ if(lucidbarEl) lucidbarEl.hidden=!on; document.body.classList.toggle("lucid-active",!!on); }
+  lucidbarEl&&lucidbarEl.querySelectorAll("[data-seg]").forEach(b=>
+    b.onclick=()=>{ const t="/lucid/"+b.dataset.seg; if(location.pathname!==t) go(t); });
+  // keep the sticky hub bar flush under the variable-height app bar
+  function syncAppH(){ const ab=document.querySelector(".appbar");
+    if(ab) document.documentElement.style.setProperty("--app-h",ab.offsetHeight+"px"); }
+  syncAppH(); addEventListener("resize",syncAppH);
+  // brand → Today; "/" focuses global search on desktop (search is an app-bar tool, not a tab)
+  const _brand=document.getElementById("brandHome"); if(_brand) _brand.onclick=()=>go("/");
+  document.addEventListener("keydown",(e)=>{ if(e.key==="/" && !e.metaKey && !e.ctrlKey && !e.altKey
+    && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||"")
+    && location.pathname!=="/search"){ e.preventDefault(); go("/search"); } });
 
   // ===== CRM (orionscrm roster: clients / leads / network) =====
   let crmData=null, crmFilter="all";
@@ -789,117 +818,209 @@ const App = (() => {
     setTimeout(()=>{ try{ q.focus(); }catch(_){} },60);
   }
 
-  // ===== DAILY REVIEW (end-of-day wrap-up, routed at /review) =====
+  // ===== REVIEW v2 — actionable, relevance-ranked queue (routed at /review) =====
+  // Reuses go,api,toast,rel,mood,stageColor,crmOwe,copyDraft,masthead,setSubline,h,
+  // paintDone,skeletons,authOrError,cache,crmData,setTab,crmRefresh.
+  let _rvData=null, _rvItems=[], reviewFilter="all";
+  const _lsGet=(k)=>{ try{ return JSON.parse(localStorage.getItem(k)||"[]"); }catch(_){ return []; } };
+  const _lsSet=(k,a)=>{ try{ localStorage.setItem(k,JSON.stringify(a)); }catch(_){ } };
+  const todoId   =(t)=>`${t.note_id||""}::${(t.text||"").slice(0,80)}`;
+  const doneTodos=()=>new Set(_lsGet("lucid_done_todos"));
+  const seenNotes=()=>new Set(_lsGet("lucid_seen_notes"));
+  const markSeen =(id)=>{ const s=new Set(_lsGet("lucid_seen_notes")); s.add(id); _lsSet("lucid_seen_notes",[...s]); };
+
   async function showReview(){
-    setTab("home");
-    app.innerHTML=`<div class="view view--wide review">
-      <span class="backlink" onclick="App.go('/')">← Today</span>
-      ${masthead({title:"The day in review", wide:true})}
-      <div class="figrow">${Array(4).fill('<div class="statcard"><span class="figure">·</span></div>').join("")}</div>
-      ${skeletons(2)}</div>`;
+    setTab("review");
+    app.innerHTML=`<div class="view view--wide review2">
+      ${masthead({title:"Review", wide:true})}
+      <div class="figrow">${Array(5).fill('<div class="statcard"><span class="figure">·</span><span class="figcap">&nbsp;</span></div>').join("")}</div>
+      ${skeletons(3)}</div>`;
     const grab=(p)=>api(p).then(r=>r).catch(()=>null);
     let recs; try{ recs = cache.length ? cache : await api("/api/recordings"); }
     catch(e){ return authOrError(e,showReview); }
     cache=recs;
-    const [crm,tasks,ppl]=await Promise.all([
-      grab("/api/crm/board"), grab("/api/data/action-items"), grab("/api/people")]);
-    paintReview({ recs,
-      crm:(crm&&!crm.missing)?crm:{contacts:[],stats:{}},
-      tasks:(tasks&&tasks.action_items)||[], ppl:ppl||[] });
+    const [crm,tasks,vens]=await Promise.all([
+      grab("/api/crm/board"), grab("/api/data/action-items"), grab("/api/ventures")]);
+    const board=(crm&&!crm.missing)?crm:{contacts:[],stats:{},review:[]};
+    crmData=board;
+    paintReview({ recs, crm:board, tasks:(tasks&&tasks.action_items)||[], vens:vens||[] });
+  }
+
+  function reviewBuild(b){
+    const now=Date.now(), today=new Date().toDateString();
+    const isToday=(iso)=>{ const d=new Date(iso); return !isNaN(d)&&d.toDateString()===today; };
+    const done=doneTodos(), seen=seenNotes(), items=[];
+    // 1 — contacts who owe you a reply (client > lead > network; draft acts faster)
+    (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{
+      const client=!!c.is_client, lead=!client&&c.bucket!=="business", draft=!!c.draft;
+      const ageH=(now-new Date(c.last_ts||now))/3600000;
+      const score=(client?100:lead?80:60)+(draft?8:0)+(ageH<24?6:ageH<72?2:0);
+      items.push({ type:"reply", score, glyph:draft?"✍":"✉", domain:stageColor(c),
+        kind: client?"Client · owes you a reply" : lead?"Lead · owes you a reply" : "Owes you a reply",
+        title:c.name||c.company||c.email, sub:c.situation||c.summary||"Waiting on your reply",
+        pills: draft?[{t:"draft ready",cls:"go"}]:[],
+        time: rel(new Date(c.last_ts||now).toISOString()),
+        open:()=>go("/crm/"+encodeURIComponent(c.email)),
+        actions:[ draft ? {label:"Copy draft", primary:true, run:copyDraft(c.draft)}
+          : {label:"Reply →", primary:true, run:()=>go("/crm/"+encodeURIComponent(c.email))} ] });
+    });
+    // 2 — open to-dos (overdue first)
+    (b.tasks||[]).forEach(t=>{ const id=todoId(t); if(done.has(id)) return;
+      const due=(t.due||"").toLowerCase(); const overdue=/(yesterday|overdue|asap|today|now)/.test(due);
+      const fresh=isToday(t.created_at); const score=50+(overdue?20:0)+(fresh?6:0);
+      items.push({ type:"todo", score, glyph:"✓", domain: overdue?"var(--caution)":"var(--positive)",
+        kind: t.owner?("To-do · "+t.owner):"To-do", title:t.text, sub:t.note_headline||"",
+        pills: overdue?[{t:t.due,cls:"warn"}]:[], time: fresh?"new":"",
+        open: t.note_id?()=>go("/r/"+t.note_id):null,
+        actions:[{label:"Done", primary:true, run:(row)=>completeTodo(id,row)}] });
+    });
+    // 3 — tense notes today
+    (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&isToday(r.created_at)&&!seen.has(r.id)).forEach(r=>{
+      items.push({ type:"triage", score:72, glyph:"⚠", domain:"var(--critical)",
+        kind:"Tense note · review", title:r.headline||"Conversation",
+        sub:r.summary||"A tense moment worth a second look", pills:[], time:rel(r.created_at),
+        seenId:r.id, open:()=>go("/r/"+r.id),
+        actions:[{label:"Open →", primary:true, run:()=>{markSeen(r.id);go("/r/"+r.id);}}] });
+    });
+    // 4 — new notes today to triage
+    (b.recs||[]).filter(r=>r.status==="done"&&isToday(r.created_at)&&mood(r).k!=="tense"&&!seen.has(r.id)).slice(0,8).forEach(r=>{
+      const m=mood(r);
+      items.push({ type:"triage", score:52, glyph:"∿", domain:m.c, kind:"New note · triage",
+        title:r.headline||"Untitled", sub:r.summary||m.w, pills:[], time:rel(r.created_at),
+        seenId:r.id, open:()=>go("/r/"+r.id),
+        actions:[{label:"Open →", run:()=>{markSeen(r.id);go("/r/"+r.id);}}] });
+    });
+    // 5 — ideas with no build plan yet
+    (b.vens||[]).filter(v=>!v.has_spec).slice(0,6).forEach(v=>{
+      items.push({ type:"idea", score:40, glyph:"◆", domain:"var(--accent)", kind:"Idea · no build plan",
+        title:v.title, sub:v.summary||"Turn this into a build plan", pills:[], time:v.last_seen?rel(v.last_seen):"",
+        open:()=>go("/ventures/"+encodeURIComponent(v.id)),
+        actions:[{label:"Generate plan", primary:true, gen:true, run:(row)=>generatePlan(v.id,row)}] });
+    });
+    // 6 — CRM skip-queue: promote / dismiss (lowest signal)
+    (b.crm.review||[]).slice(0,12).forEach(r=>{
+      items.push({ type:"promote", score:28, glyph:"＋", domain:"var(--ink-3)", multi:true,
+        kind:"Maybe a contact?", title:r.name||r.company||r.email,
+        sub:r.summary||r.category||"Skipped — promote if it belongs", pills:[], time:"",
+        open:()=>go("/crm/"+encodeURIComponent(r.email)),
+        actions:[ {label:"+ Client", primary:true, run:(row)=>crmPromote(r.email,"promote",row)},
+                  {label:"+ Lead", run:(row)=>crmPromote(r.email,"lead",row)},
+                  {label:"✕", x:true, run:(row)=>crmPromote(r.email,"remove",row)} ] });
+    });
+    return items.sort((a,c)=>c.score-a.score);
+  }
+
+  const RV_FILTERS=[
+    {f:"all",   cap:"All",     col:"var(--ink)"},
+    {f:"reply", cap:"Replies", col:"var(--accent)"},
+    {f:"todo",  cap:"To-dos",  col:"var(--positive)"},
+    {f:"triage",cap:"Triage",  col:"var(--critical)"},
+    {f:"idea",  cap:"Ideas",   col:"var(--accent-ink)"},
+  ];
+  const RV_BUCKETS=[
+    {k:"now",  label:"Decide now",        test:s=>s>=66},
+    {k:"soon", label:"Soon",              test:s=>s>=38&&s<66},
+    {k:"fyi",  label:"When you have time", test:s=>s<38},
+  ];
+
+  function rvRow(it){
+    const pills=(it.pills||[]).map(p=>`<span class="rv-pill ${p.cls||""}">${h(p.t)}</span>`).join("");
+    const meta=(pills||it.time)?`<div class="rv-meta">${pills}${it.time?`<span class="rv-time">${h(it.time)}</span>`:""}</div>`:"";
+    const acts=(it.actions||[]).map((a,ai)=>
+      `<button class="rv-cta${a.primary?" is-primary":""}${a.x?" is-x":""}" data-act="${ai}"${a.gen?' data-gen="1"':''}>${h(a.label)}</button>`).join("");
+    return `<div class="rvitem${it.multi?" has-multi":""}" data-i="${it._i}" style="--domain:${it.domain}">
+      <span class="rv-chip"><span>${it.glyph}</span></span>
+      <button class="rv-main"><div class="rv-kind">${h(it.kind)}</div>
+        <div class="rv-title">${h(it.title)}</div>
+        ${it.sub?`<div class="rv-sub">${h(it.sub)}</div>`:""}${meta}</button>
+      <div class="rv-act">${acts}</div></div>`;
   }
 
   function paintReview(b){
-    _briefFns=[]; crmData=b.crm;
+    _rvData=b;
+    const all=reviewBuild(b); all.forEach((it,i)=>it._i=i); _rvItems=all;
+    const counts={reply:0,todo:0,triage:0,idea:0,promote:0};
+    all.forEach(it=>counts[it.type]=(counts[it.type]||0)+1);
     const now=new Date();
-    const isToday=(iso)=>{ const d=new Date(iso); return !isNaN(d) && d.toDateString()===now.toDateString(); };
-    const hr=now.getHours();
-    const close = hr<12?"The morning so far" : hr<18?"The day so far" : "That's the day";
-
-    const notes=b.recs.filter(r=>isToday(r.created_at));
-    const done=notes.filter(r=>r.status==="done");
-    const mins=Math.round(done.reduce((a,r)=>a+(r.duration||0),0)/60);
-
-    const owe=(b.crm.contacts||[]).filter(crmOwe)
-      .sort((a,c)=>new Date(c.last_ts||0)-new Date(a.last_ts||0));
-    let sent=0; (b.crm.contacts||[]).forEach(c=>(c.timeline||[]).forEach(t=>{
-      const dt=Date.parse(t.date);
-      if(t.direction==="out" && !isNaN(dt) && new Date(dt).toDateString()===now.toDateString()) sent++; }));
-
-    const tasks=b.tasks||[];
-    const seen=[]; const sset=new Set();
-    notes.forEach(r=>(r.people||[]).forEach(n=>{ const k=(n||"").toLowerCase().trim();
-      if(n && !sset.has(k)){ sset.add(k); seen.push(n); } }));
-    const pByName={}; (b.ppl||[]).forEach(p=>pByName[(p.name||"").toLowerCase().trim()]=p);
-
-    const bits=[`<b>${notes.length}</b> note${notes.length!==1?"s":""} today`];
-    if(seen.length)  bits.push(`<b>${seen.length}</b> ${seen.length>1?"people":"person"} seen`);
-    if(owe.length)   bits.push(`<b>${owe.length}</b> repl${owe.length>1?"ies":"y"} owed`);
-    if(tasks.length) bits.push(`<b>${tasks.length}</b> to-do${tasks.length>1?"s":""} open`);
-    const ed = (notes.length||seen.length||owe.length||tasks.length)
-      ? bits.join(" · ")+"." : "A quiet day — nothing captured yet. Rest counts too.";
-    setSubline([notes.length+" notes", seen.length&&seen.length+" seen", owe.length&&owe.length+" owed"]
-      .filter(Boolean).join(" · "));
-
-    const figs=[
-      {n:notes.length, cap:"Notes today",  domain:"var(--ink)",           to:"rv-notes"},
-      {n:seen.length,  cap:"People seen",   domain:"var(--accent)",        to:"rv-people"},
-      {n:tasks.length, cap:"To-dos open",   domain:"var(--pos)",           to:"rv-todos"},
-      {n:owe.length,   cap:"Replies owed",  domain:"var(--accent-strong)", to:"rv-replies"},
-    ];
-    const ribbon=figs.map(f=>`<button class="statcard" style="--domain:${f.domain}" data-to="${f.to}">
-      <span class="figure">${f.n}</span><span class="figcap">${h(f.cap)}</span></button>`).join("");
-
-    const mini=(o)=>`<div class="minirow" style="--domain:${o.domain}" ${actAttr(o.go)}>
-      <span class="spinedot"></span><div class="mtxt"><div class="mt1">${h(o.t1)}</div>
-      ${o.t2?`<div class="mt2">${h(o.t2)}</div>`:""}</div>
-      ${o.time?`<span class="mtime">${h(o.time)}</span>`:""}</div>`;
-
-    const notesHTML = notes.length
-      ? notes.slice(0,8).map(r=>{ const m=mood(r); return mini({ domain:m.c,
-          t1:r.headline||"Untitled", t2:r.summary||m.w, time:rel(r.created_at), go:()=>go("/r/"+r.id) }); }).join("")
-        + (notes.length>8?`<span class="seeall" ${actAttr(()=>go("/notes"))}>All notes →</span>`:"")
-      : `<div class="allclear"><b>No notes today.</b> When you record, today's conversations gather here.</div>`;
-
-    const repliesHTML = owe.length
-      ? owe.slice(0,6).map(c=>mini({ domain:stageColor(c), t1:c.name||c.company,
-          t2:(c.draft?"✍ draft ready · ":"")+(c.situation||c.summary||"Owe a reply"),
-          time:rel(new Date(c.last_ts||Date.now()).toISOString()), go:()=>go("/crm/"+encodeURIComponent(c.email)) })).join("")
-        + (sent?`<div class="rv-foot">✓ ${sent} repl${sent>1?"ies":"y"} sent today</div>`:"")
-      : `<div class="allclear"><b>Inbox clear.</b> No replies owed${sent?` · ${sent} sent today`:""}.</div>`;
-
-    const todosHTML = tasks.length
-      ? tasks.slice(0,8).map(t=>mini({ domain:isToday(t.created_at)?"var(--pos)":"var(--neu)",
-          t1:t.text, t2:[t.owner&&("— "+t.owner), t.due&&("due "+t.due), t.note_headline].filter(Boolean).join(" · "),
-          time:isToday(t.created_at)?"new":"", go:()=>go("/r/"+t.note_id) })).join("")
-      : `<div class="allclear"><b>No open to-dos.</b> Clear desk.</div>`;
-
-    const peopleHTML = seen.length
-      ? seen.slice(0,8).map(n=>{ const p=pByName[(n||"").toLowerCase().trim()];
-          return mini({ domain:p?`var(--${toneClass(p.tone)})`:"var(--neu)", t1:n,
-            t2:p?`${toneWord(p.tone)} · ${trendWord(p.trend)}`:"first time on Lucid",
-            time:p?rel(p.last_seen):"", go:()=>go(p?("/people/"+encodeURIComponent(p.key)):"/people") }); }).join("")
-      : `<div class="allclear"><b>No one new today.</b> People from today's notes appear here.</div>`;
-
-    const closing = `${notes.length} note${notes.length!==1?"s":""}`
-      + (seen.length?`, ${seen.length} ${seen.length>1?"people":"person"} seen`:"")
-      + (mins?`, ${mins} min captured`:"") + ".";
-
-    app.innerHTML=`<div class="view view--wide review">
-      <span class="backlink" onclick="App.go('/')">← Today</span>
-      ${masthead({title:close+".", note:ed, wide:true})}
-      <div class="figrow">${ribbon}</div>
-      <div class="deck">
-        <div class="panel sp-7" id="rv-notes"><h2>Today's notes${notes.length?`<span class="hcount">${notes.length}</span>`:""}</h2>${notesHTML}</div>
-        <div class="panel sp-5" id="rv-replies"><h2>Replies${owe.length?`<span class="hcount">${owe.length}</span>`:""}</h2>${repliesHTML}</div>
-        <div class="panel sp-7" id="rv-todos"><h2>Open to-dos${tasks.length?`<span class="hcount">${tasks.length}</span>`:""}</h2>${todosHTML}</div>
-        <div class="panel sp-5" id="rv-people"><h2>People seen${seen.length?`<span class="hcount">${seen.length}</span>`:""}</h2>${peopleHTML}</div>
-      </div>
-      <div class="reviewclose"><b>${close}.</b><br>${closing}${hr>=18?" Rest well.":""}</div>
-    </div>`;
+    const nNow=all.filter(it=>it.score>=66).length;
+    const fil = reviewFilter==="all" ? all : all.filter(it=>it.type===reviewFilter);
+    const bits=[];
+    if(counts.reply)  bits.push(`<b>${counts.reply}</b> repl${counts.reply>1?"ies":"y"} owed`);
+    if(counts.todo)   bits.push(`<b>${counts.todo}</b> to-do${counts.todo>1?"s":""}`);
+    if(counts.triage) bits.push(`<b>${counts.triage}</b> to review`);
+    if(counts.idea)   bits.push(`<b>${counts.idea}</b> idea${counts.idea>1?"s":""}`);
+    const ed = all.length
+      ? (nNow?`<b>${nNow}</b> need${nNow>1?"":"s"} you now — `:"")+(bits.join(" · ")||"a few odds and ends")+"."
+      : "Nothing needs you. You're all caught up.";
+    setSubline(all.length
+      ? [nNow&&nNow+" now", counts.reply&&counts.reply+" owed", counts.todo&&counts.todo+" to-dos"].filter(Boolean).join(" · ")
+      : "all clear");
+    const ribbon=[{f:"all",n:all.length}].concat(RV_FILTERS.slice(1).map(x=>({f:x.f,n:counts[x.f]||0})))
+      .map(x=>{ const def=RV_FILTERS.find(r=>r.f===x.f)||{};
+        return `<button class="statcard${reviewFilter===x.f?" on":""}" data-f="${x.f}" style="--mc:${def.col}">
+          <span class="figure">${x.n}</span><span class="figcap">${h(def.cap)}</span></button>`; }).join("");
+    let body;
+    if(!all.length){
+      const filed=(b.recs||[]).filter(r=>r.status==="done"&&new Date(r.created_at).toDateString()===now.toDateString()).length;
+      body=`<div class="rv-empty"><div class="rv-empty-mark">✓</div>
+        <div class="rv-empty-t">Nothing needs you.</div>
+        <div class="rv-empty-s">${filed?`${filed} note${filed>1?"s":""} filed today · no replies owed, every idea has a plan.`:"No replies owed, no open to-dos, every idea has a plan."}</div></div>`;
+    } else if(!fil.length){
+      body=`<div class="rv-empty"><div class="rv-empty-mark">◌</div>
+        <div class="rv-empty-t">Clear in this filter.</div>
+        <div class="rv-empty-s">Tap “All” to see everything that wants you.</div></div>`;
+    } else {
+      body=RV_BUCKETS.map(bk=>{ const rows=fil.filter(it=>bk.test(it.score)); if(!rows.length) return "";
+        return `<div class="daygroup rvbucket rvb-${bk.k}">
+          <div class="daylabel">${bk.label}<span class="n">${rows.length}</span></div>
+          <div class="rvqueue">${rows.map(rvRow).join("")}</div></div>`; }).join("");
+    }
+    const doneN=(b.tasks||[]).filter(t=>doneTodos().has(todoId(t))).length;
+    const doneBar = doneN ? `<div class="rv-donebar"><span>✓ ${doneN} to-do${doneN>1?"s":""} done today</span>
+      <button class="rv-undo" id="rvUndo">Undo last</button></div>` : "";
+    app.innerHTML=`<div class="view view--wide review2">
+      ${masthead({title:"Review", note:ed, wide:true})}
+      <div class="figrow">${ribbon}</div>${body}${doneBar}</div>`;
     paintDone();
-    bindBrief();
-    app.querySelectorAll(".statcard[data-to]").forEach(s=>s.onclick=()=>{
-      const el=document.getElementById(s.dataset.to); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); });
+    app.querySelectorAll(".figrow .statcard[data-f]").forEach(s=>s.onclick=()=>{ reviewFilter=s.dataset.f; paintReview(_rvData); });
+    app.querySelectorAll(".rvitem").forEach(row=>{ const it=_rvItems[+row.dataset.i]; if(!it) return;
+      const main=row.querySelector(".rv-main");
+      if(main) main.onclick=()=>{ if(it.seenId) markSeen(it.seenId); it.open&&it.open(); };
+      row.querySelectorAll(".rv-cta[data-act]").forEach(btn=>btn.onclick=(e)=>{
+        e.stopPropagation(); const a=it.actions[+btn.dataset.act]; if(a&&a.run) a.run(row,btn); }); });
+    const ub=document.getElementById("rvUndo");
+    if(ub) ub.onclick=()=>{ const arr=_lsGet("lucid_done_todos"); arr.pop(); _lsSet("lucid_done_todos",arr); toast("Undone"); paintReview(_rvData); };
+  }
+
+  function collapseRow(row, after){
+    if(!row){ after&&after(); return; }
+    if(matchMedia("(prefers-reduced-motion:reduce)").matches){ after&&after(); return; }
+    row.style.maxHeight=row.scrollHeight+"px"; row.classList.add("rv-gone");
+    requestAnimationFrame(()=>{ row.style.maxHeight="0px"; });
+    let fired=false; const fin=()=>{ if(fired)return; fired=true; after&&after(); };
+    row.addEventListener("transitionend",fin,{once:true}); setTimeout(fin,340);
+  }
+  function completeTodo(id,row){
+    const arr=_lsGet("lucid_done_todos"); if(!arr.includes(id)){ arr.push(id); _lsSet("lucid_done_todos",arr); }
+    toast("Done ✓"); collapseRow(row, ()=>paintReview(_rvData));
+  }
+  async function generatePlan(vid,row){
+    const btn=row.querySelector('.rv-cta[data-gen]');
+    if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>Building…'; }
+    try{ await api("/api/ventures/"+encodeURIComponent(vid)+"/build",{method:"POST"}); }
+    catch(e){ toast("Couldn't build the plan"); if(btn){ btn.disabled=false; btn.textContent="Generate plan"; } return; }
+    (_rvData.vens||[]).forEach(v=>{ if(v.id===vid) v.has_spec=true; });
+    toast("Build plan ready ✓"); collapseRow(row, ()=>paintReview(_rvData));
+  }
+  async function crmPromote(email,action,row){
+    try{ await api("/api/crm/board/override",{method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({email,action})}); }
+    catch(e){ toast("Couldn't save"); return; }
+    if(_rvData.crm&&_rvData.crm.review) _rvData.crm.review=_rvData.crm.review.filter(r=>r.email!==email);
+    if(crmData&&crmData.review)         crmData.review=crmData.review.filter(r=>r.email!==email);
+    toast(action==="remove"?"Dismissed":action==="lead"?"Added as lead":"Added as client");
+    if(action!=="remove" && typeof crmRefresh==="function") crmRefresh(false);
+    collapseRow(row, ()=>paintReview(_rvData));
   }
 
   // ===== PEOPLE (relationships over time) =====
@@ -938,11 +1059,12 @@ const App = (() => {
       <button class="cta line" data-open="${attr(p.key)}">Open &rarr;</button>
     </div>`;
   }
-  const peopleSeg=()=>`<div class="segtoggle" id="pseg">
-      <button data-pm="rel" class="${peopleMode==="rel"?"on":""}">Relationships</button>
-      <button data-pm="dir" class="${peopleMode==="dir"?"on":""}">Directory</button></div>`;
+  const peopleSeg=()=>`<div class="subseg" id="pseg" role="tablist" aria-label="People view">
+      <button data-pm="rel" class="${peopleMode==="rel"?"on":""}" role="tab" aria-selected="${peopleMode==="rel"}">Mentions</button>
+      <span class="subseg-sep">&middot;</span>
+      <button data-pm="dir" class="${peopleMode==="dir"?"on":""}" role="tab" aria-selected="${peopleMode==="dir"}">Directory</button></div>`;
   function bindSeg(){ const s=document.getElementById("pseg"); if(!s) return;
-    s.querySelectorAll("[data-pm]").forEach(b=>b.onclick=()=>{ if(b.dataset.pm==="dir"){go("/directory");} else {go("/people");} }); }
+    s.querySelectorAll("[data-pm]").forEach(b=>b.onclick=()=>go(b.dataset.pm==="dir"?"/lucid/directory":"/lucid/people")); }
 
   async function showPeople(){
     peopleMode="rel";
@@ -1170,7 +1292,7 @@ const App = (() => {
 
   async function showPerson(key){
     app.innerHTML=`<div class="view detail person-dossier view--wide">
-      <span class="backlink" onclick="App.go('/people')">&larr; People</span>${skeletons(2)}</div>`;
+      <span class="backlink" onclick="App.go('/lucid/people')">&larr; People</span>${skeletons(2)}</div>`;
     let p; try { p=await api("/api/people/"+encodeURIComponent(key)); } catch(e){ return authOrError(e,()=>showPerson(key)); }
     const col=`var(--${toneClass(p.tone)})`;
     setSubline(p.name||"People");
@@ -1220,7 +1342,7 @@ const App = (() => {
       ${allQuotes.map(q=>`<div class="pquote">&ldquo;${h(q.text)}&rdquo;${q.significance?`<span class="qsig">${h(q.significance)}</span>`:""}</div>`).join("")}</div>`:"";
 
     app.innerHTML=`<div class="view detail person-dossier view--wide" style="--mc:${col}">
-      <span class="backlink" onclick="App.go('/people')">&larr; People</span>
+      <span class="backlink" onclick="App.go('/lucid/people')">&larr; People</span>
       <div class="dhero">${ringHTML(col,100,h(pInitials(p.name)))}
         <div><h1>${h(p.name)}</h1>
           <div class="dmeta"><span class="mc">${toneWord(p.tone)}</span>
@@ -1347,7 +1469,7 @@ const App = (() => {
   }
 
   async function showVenture(id){
-    app.innerHTML=`<div class="view detail view--wide"><span class="backlink" onclick="App.go('/ventures')">&larr; Ideas</span>${skeletons(2)}</div>`;
+    app.innerHTML=`<div class="view detail view--wide"><span class="backlink" onclick="App.go('/lucid/ideas')">&larr; Ideas</span>${skeletons(2)}</div>`;
     let v; try{ v=await api("/api/ventures/"+encodeURIComponent(id)); }catch(e){ return authOrError(e,()=>showVenture(id)); }
     renderVenture(v);
   }
@@ -1388,7 +1510,7 @@ const App = (() => {
         <button class="btn" id="genBtn">&#10038; Generate build plan</button></div>`;
 
     app.innerHTML=`<div class="view detail view--wide idea-dossier" style="--mc:${col}">
-      <span class="backlink" onclick="App.go('/ventures')">&larr; Ideas</span>
+      <span class="backlink" onclick="App.go('/lucid/ideas')">&larr; Ideas</span>
       <div class="dhero">${ringHTML(col,100,"&#9670;")}
         <div><h1>${h(v.title)}</h1>
           <div class="dmeta"><span class="mc">${v.proposed_by?h(v.proposed_by):"Idea"}</span>
@@ -1493,26 +1615,26 @@ const App = (() => {
     audioURL = URL.createObjectURL(blob); audioURLId = id; return audioURL;
   }
   async function showDetail(id){
-    app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/notes')">← Notes</span>${skeletons(1)}
+    app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/lucid/notes')">← Notes</span>${skeletons(1)}
       <div style="height:12px"></div>${skeletons(2)}</div>`;
     let rec; try { rec=await api("/api/recordings/"+id); } catch(e){ return authOrError(e,()=>showDetail(id)); }
     current=rec; activeTab="overview"; showOriginal=false; chatHist=[];
 
     if (!["done","error"].includes(rec.status)){
-      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/notes')">← Notes</span>
+      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/lucid/notes')">← Notes</span>
         <div class="empty"><span class="spin-lg"></span>${h(rec.status)}…
         <div class="hint">transcribe → translate → analyze</div></div></div>`;
       pollTimer=setTimeout(()=>showDetail(id),3500); return;
     }
     if (rec.status==="error"){
-      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/notes')">← Notes</span>
+      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.go('/lucid/notes')">← Notes</span>
         <div class="panel"><h2>Error</h2><p style="color:var(--ten);white-space:pre-wrap;font-size:13px">${h(rec.error)}</p>
         <button class="btn" onclick="App.reanalyze('${id}')">Retry</button></div></div>`; return;
     }
 
     const a=rec.analysis||{}; const m=mood(a);
     app.innerHTML=`<div class="view" style="--mc:${m.c}">
-      <span class="backlink" onclick="App.go('/notes')">← Notes</span>
+      <span class="backlink" onclick="App.go('/lucid/notes')">← Notes</span>
       <div class="dhero">${ringHTML(m.c,72)}
         <div><h1>${h(a.headline||"Recording")}</h1>
           <div class="dmeta"><span class="mc">${m.w}</span><span>· ${fmt(rec.duration)}</span>
@@ -2208,7 +2330,7 @@ const App = (() => {
     } catch(e){ toast("Rename failed"); }
   }
   async function del(id){ if(!confirm("Delete this recording?"))return;
-    try{ await api(`/api/recordings/${id}`,{method:"DELETE"}); cache=[]; go("/notes"); }catch(e){toast("Failed");} }
+    try{ await api(`/api/recordings/${id}`,{method:"DELETE"}); cache=[]; go("/lucid/notes"); }catch(e){toast("Failed");} }
 
   function authOrError(e,retry){
     if (String(e.message)==="auth"){ return showLogin(retry); }

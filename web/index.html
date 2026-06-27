@@ -18,7 +18,7 @@
 </head>
 <body>
   <header class="appbar">
-    <div class="brand">
+    <div class="brand" id="brandHome">
       <span class="rx">L</span>
       <span class="wordmark">Lucid</span>
     </div>
@@ -30,14 +30,23 @@
     </div>
   </header>
 
+  <nav class="lucidbar" id="lucidbar" hidden aria-label="Lucid sections">
+    <div class="lucidbar-in">
+      <div class="segtoggle seg-lucid" role="tablist">
+        <button data-seg="notes"  role="tab" aria-selected="true"><span class="seg-ic">&#9636;</span>Notes</button>
+        <button data-seg="people" role="tab" aria-selected="false"><span class="seg-ic">&#9677;</span>People</button>
+        <button data-seg="ideas"  role="tab" aria-selected="false"><span class="seg-ic">&#9670;</span>Ideas</button>
+      </div>
+    </div>
+  </nav>
+
   <main id="app"></main>
 
   <nav class="tabbar">
     <button data-tab="home" class="active"><span class="ic">&#8962;</span>Today</button>
-    <button data-tab="notes"><span class="ic">&#9635;</span>Notes</button>
-    <button data-tab="people"><span class="ic">&#9737;</span>People</button>
     <button data-tab="crm"><span class="ic">&#9638;</span>CRM</button>
-    <button data-tab="ventures"><span class="ic">&#9671;</span>Ideas</button>
+    <button data-tab="lucid"><span class="ic">&#9737;</span>Lucid</button>
+    <button data-tab="review"><span class="ic">&#10003;</span>Review</button>
   </nav>
 
   <div class="toast" id="toast"></div>

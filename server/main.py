@@ -1056,6 +1056,9 @@ def setup_page():
 @app.get("/r/{rec_id}")
 @app.get("/people/{key}")
 @app.get("/ventures/{vid}")
+@app.get("/lucid")
+@app.get("/lucid/{seg}")
+@app.get("/crm/{email}")
 @app.get("/notes")
 @app.get("/search")
 @app.get("/settings")
@@ -1064,7 +1067,7 @@ def setup_page():
 @app.get("/ventures")
 @app.get("/crm")
 @app.get("/review")
-def spa_routes(rec_id: str = "", key: str = "", vid: str = ""):
+def spa_routes(rec_id: str = "", key: str = "", vid: str = "", seg: str = "", email: str = ""):
     return _spa() if settings.is_configured else RedirectResponse("/setup")
 
 
