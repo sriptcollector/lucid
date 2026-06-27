@@ -376,7 +376,7 @@ async def login(request: Request) -> dict:
 @app.get("/api/login/email/status")
 def login_email_status() -> dict:
     """Tells the login screen whether to offer passwordless email sign-in."""
-    return {"available": email_login.configured()}
+    return {"available": email_login.configured(), "hint": email_login.owner_hint()}
 
 
 @app.post("/api/login/email/request")

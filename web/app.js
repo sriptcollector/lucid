@@ -2372,50 +2372,30 @@ const App = (() => {
 
   async function showLogin(retry){
     const finish=(d)=>{ token=(d&&d.token)||""; localStorage.setItem("lucid_token",token); (retry||route)(); };
-    let emailOK=false;
-    try{ emailOK=!!(await fetch("/api/login/email/status").then(r=>r.json())).available; }catch(_){}
-    if(!emailOK) return passwordLogin(retry,finish);
-    let stage="email", sentTo="";
-    const paint=()=>{
-      app.innerHTML=`<div class="login"><div class="login-card">
-        <div class="lock">✦</div><h2>Sign in to Lucid</h2>
-        <p>${stage==="email"
-          ? "Enter your email — we'll send a one-time code. No password needed."
-          : "Enter the 6-digit code we just emailed to <b>"+h(sentTo)+"</b>."}</p>
-        <div class="login-err" id="lerr"></div>
-        ${stage==="email"
-          ? `<input id="lem" type="email" inputmode="email" placeholder="you@email.com" autocomplete="email" />
-             <button class="btn primary" id="lbtn">Email me a code</button>`
-          : `<input id="lcode" type="text" inputmode="numeric" maxlength="6" placeholder="••• •••" autocomplete="one-time-code" />
-             <button class="btn primary" id="lbtn">Sign in</button>
-             <button class="loginalt" id="lback">← Use a different email</button>`}
-        <button class="loginalt" id="lpw2">Use password instead</button>
-      </div></div>`;
-      const err=document.getElementById("lerr"), btn=document.getElementById("lbtn");
-      document.getElementById("lpw2").onclick=()=>passwordLogin(retry,finish);
-      if(stage==="email"){
-        const em=document.getElementById("lem");
-        const send=async()=>{ const v=em.value.trim(); if(!/.+@.+\..+/.test(v)){ err.textContent="Enter a valid email."; return; }
-          btn.disabled=true; err.textContent="Sending…";
-          try{ await fetch("/api/login/email/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:v})});
-            sentTo=v; stage="code"; paint();
-          }catch(e){ err.textContent="Network error — try again."; btn.disabled=false; } };
-        btn.onclick=send; em.onkeydown=e=>{ if(e.key==="Enter") send(); };
-        setTimeout(()=>{try{em.focus();}catch(_){}} ,120);
-      } else {
-        const c=document.getElementById("lcode");
-        document.getElementById("lback").onclick=()=>{ stage="email"; paint(); };
-        const go=async()=>{ const v=c.value.replace(/\D/g,""); if(v.length<6){ err.textContent="Enter the 6-digit code."; return; }
-          btn.disabled=true; err.textContent="";
-          try{ const r=await fetch("/api/login/email/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:sentTo,code:v})});
-            if(!r.ok){ err.textContent=r.status===429?"Too many tries — wait a moment.":"That code is wrong or expired."; btn.disabled=false; return; }
-            finish(await r.json());
-          }catch(e){ err.textContent="Network error — try again."; btn.disabled=false; } };
-        btn.onclick=go; c.onkeydown=e=>{ if(e.key==="Enter") go(); };
-        setTimeout(()=>{try{c.focus();}catch(_){}} ,120);
-      }
-    };
-    paint();
+    let st={};
+    try{ st=await fetch("/api/login/email/status").then(r=>r.json()); }catch(_){}
+    if(!st.available) return passwordLogin(retry,finish);   // silent fallback only if Gmail is down
+    const sendCode=()=>fetch("/api/login/email/request",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).catch(()=>{});
+    sendCode();                                              // code is already waiting when you look
+    app.innerHTML=`<div class="login"><div class="login-card">
+      <div class="lock">✦</div><h2>Sign in to Lucid</h2>
+      <p>We just emailed a 6-digit code to <b>${h(st.hint||"your email")}</b>. Enter it to continue.</p>
+      <div class="login-err" id="lerr"></div>
+      <input id="lcode" type="text" inputmode="numeric" maxlength="6" placeholder="••• •••" autocomplete="one-time-code" />
+      <button class="btn primary" id="lbtn">Sign in</button>
+      <button class="loginalt" id="lresend">Resend code</button>
+    </div></div>`;
+    const c=document.getElementById("lcode"), btn=document.getElementById("lbtn"), err=document.getElementById("lerr");
+    document.getElementById("lresend").onclick=async(e)=>{ e.target.disabled=true; await sendCode(); err.textContent="New code sent."; setTimeout(()=>{try{e.target.disabled=false;}catch(_){}},2500); };
+    const go=async()=>{ const v=c.value.replace(/\D/g,""); if(v.length<6){ err.textContent="Enter the 6-digit code."; return; }
+      btn.disabled=true; err.textContent="";
+      try{ const r=await fetch("/api/login/email/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:v})});
+        if(!r.ok){ err.textContent=r.status===429?"Too many tries — wait a moment.":"That code is wrong or expired."; btn.disabled=false; return; }
+        finish(await r.json());
+      }catch(e){ err.textContent="Network error — try again."; btn.disabled=false; } };
+    btn.onclick=go; c.onkeydown=e=>{ if(e.key==="Enter") go(); };
+    c.oninput=()=>{ if(c.value.replace(/\D/g,"").length===6) go(); };   // auto-submit when 6 digits in
+    setTimeout(()=>{try{c.focus();}catch(_){}} ,120);
   }
   function passwordLogin(retry,finish){
     app.innerHTML=`<div class="login"><div class="login-card">

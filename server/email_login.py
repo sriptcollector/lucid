@@ -94,11 +94,21 @@ def configured() -> bool:
     return bool(_owner_email()) and Path(d, "gmail_client.py").exists()
 
 
-def request_code(email: str) -> dict:
-    """Generate + email a code if ``email`` is the owner. Always returns ok (no
-    enumeration); ``sent`` reflects the real outcome only for the owner."""
-    email = (email or "").strip().lower()
+def owner_hint() -> str:
+    """Masked owner address for the login screen, e.g. o•••s@gmail.com."""
+    e = _owner_email()
+    if "@" not in e:
+        return ""
+    name, dom = e.split("@", 1)
+    masked = name[0] + "•••" + name[-1] if len(name) > 2 else name[:1] + "•••"
+    return masked + "@" + dom
+
+
+def request_code(email: str = "") -> dict:
+    """Email a one-time code to the owner. Single-user, so the address defaults to
+    the owner — the login screen never has to ask for it. Always returns ok."""
     owner = _owner_email()
+    email = (email or "").strip().lower() or owner
     now = time.time()
     gap = now - _LAST_SENT.get(email, 0.0)
     if gap < RESEND_GAP:
@@ -113,7 +123,7 @@ def request_code(email: str) -> dict:
 
 def verify_code(email: str, code: str) -> str | None:
     """Return the bearer token if the code is right + live, else None."""
-    email = (email or "").strip().lower()
+    email = (email or "").strip().lower() or _owner_email()
     rec = _CODES.get(email)
     if not rec:
         return None
