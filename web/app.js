@@ -122,7 +122,7 @@ const App = (() => {
       ${note?`<div class="ednote">${note}</div>`:""}</div>`;
   // one delegated handler for every masthead ↻ (survives re-renders)
   function refreshCurrent(){ const p=location.pathname;
-    brief=null; cache=[]; searchIdx=null; try{ crmData=null; }catch(_){}
+    brief=null; cache=[]; searchIdx=null; try{ crmData=null; }catch(_){} try{ _journal=null; }catch(_){}
     toast("Refreshing…"); route(); }
   document.addEventListener("click",(e)=>{ const t=e.target.closest&&e.target.closest(".mast-refresh");
     if(t){ e.preventDefault(); e.stopPropagation(); const ic=t; ic.classList.add("spinning"); refreshCurrent(); } });
@@ -173,6 +173,7 @@ const App = (() => {
       setLucidSeg(seg); return SEG_RENDER[seg](); }
     // Tools + other domains hide the hub switcher.
     showLucidBar(false);
+    if (p==="/journal"){ setTab("journal"); return showJournal(); }
     if (p==="/search"){ setTab("search"); return showSearch(); }
     if (p==="/review"){ setTab("review"); return showReview(); }
     if (p==="/settings"){ setTab("settings"); return showSettings(); }
@@ -2624,6 +2625,130 @@ const App = (() => {
         if(location.pathname==="/lucid/notes") paintNotes(); else route(); } }});
     setTimeout(async ()=>{ if(_pendingDel && _pendingDel.id===id){ await _flushDel();
       if(location.pathname==="/lucid/notes") showNotes(); } }, 6300);
+  }
+
+  // ===== JOURNAL — life timeline + confirm-and-execute action cards (/journal) =====
+  let _journal=null, _jFns=[];
+  const jAttr=(fn)=>{ _jFns.push(fn); return `data-jf="${_jFns.length-1}"`; };
+  const bindJournal=()=>app.querySelectorAll("[data-jf]").forEach(el=>{
+    el.onclick=(e)=>{ e.stopPropagation(); const f=_jFns[+el.dataset.jf]; if(f) f(e); }; });
+  const _emailRe=/\b(e-?mails?|send (her|him|them|over|out|a|the|me)|reply|respond|write (to|back|up|her|him)|reach out|follow ?ups?|\bcc\b|message (her|him|them)|get back to|loop (her|him|them) in|ping)\b/i;
+  const _calRe=/\b(schedul\w*|meetings?|set ?up (a )?(call|meeting|time|sync)|calendar|book (a|time|the)|invite|appointment|\bsync\b|call with|meet (with|up)|catch ?up|demo|walk ?through|on the calendar)\b/i;
+  function actKind(t){ const s=t&&t.text||""; if(_calRe.test(s)) return "calendar"; if(_emailRe.test(s)) return "email"; return "task"; }
+  function suggestTime(due){ const now=new Date(), d=new Date(now), s=(due||"").toLowerCase();
+    const wd={sunday:0,monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6};
+    if(/today/.test(s)){ d.setHours(Math.min(now.getHours()+2,17),0,0,0); }
+    else if(/tomorrow/.test(s)){ d.setDate(d.getDate()+1); d.setHours(10,0,0,0); }
+    else if(/next week/.test(s)){ d.setDate(d.getDate()+7); d.setHours(10,0,0,0); }
+    else { let set=false; for(const k in wd){ if(s.includes(k)){ const diff=(wd[k]-d.getDay()+7)%7||7; d.setDate(d.getDate()+diff); d.setHours(10,0,0,0); set=true; break; } }
+      if(!set){ d.setDate(d.getDate()+1); while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1); d.setHours(10,0,0,0); } }
+    if(d<=now){ d.setDate(d.getDate()+1); d.setHours(10,0,0,0); } return d; }
+  const isoLocal=(d)=>{ const p=n=>String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`; };
+  function findEmail(name){ if(!name) return ""; const n=String(name).trim().toLowerCase(); if(!n) return "";
+    const c=(_journal&&_journal.contacts||[]).find(x=>{ const xn=(x.name||"").toLowerCase();
+      return xn===n || xn.startsWith(n+" ") || n.startsWith(xn) || (xn&&xn.split(" ")[0]===n.split(" ")[0]&&n.split(" ").length>1); });
+    return c?c.email:""; }
+
+  async function showJournal(){
+    setTab("journal");
+    if(!_journal){
+      app.innerHTML=`<div class="view view--wide">${masthead({title:"Journal",note:"Your conversations — and what to do about them.",wide:true})}${skeletons(4)}</div>`;
+      paintDone();
+      try{
+        const [recs,ai,crm]=await Promise.all([ api("/api/recordings"),
+          api("/api/data/action-items").catch(()=>({action_items:[]})),
+          api("/api/crm/board").catch(()=>({contacts:[]})) ]);
+        _journal={ recs:recs||[], tasks:(ai&&ai.action_items)||[], contacts:(crm&&crm.contacts)||[] };
+      }catch(e){ return authOrError(e,showJournal); }
+    }
+    paintJournal();
+  }
+  function paintJournal(){
+    const j=_journal, done=doneTodos();
+    setSubline("your timeline");
+    const recs=(j.recs||[]).filter(r=>r.status==="done").filter(keepRec);
+    const byNote={}; (j.tasks||[]).filter(keepAi).forEach(t=>{ if(done.has(todoId(t))) return; (byNote[t.note_id]=byNote[t.note_id]||[]).push(t); });
+    const openCount=Object.values(byNote).reduce((a,v)=>a+v.length,0);
+    const days={}; recs.forEach(r=>{ const d=new Date(r.created_at).toDateString(); (days[d]=days[d]||[]).push(r); });
+    const today=new Date().toDateString(), yd=new Date(Date.now()-864e5).toDateString();
+    const dl=(d)=> d===today?"Today":d===yd?"Yesterday":new Date(d).toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+    _jFns=[];
+    const sections=Object.keys(days).sort((a,b)=>new Date(b)-new Date(a)).map(d=>{
+      const entries=days[d].map(r=>{ const acts=byNote[r.id]||[]; const m=mood(r);
+        const ppl=(r.people||[]).slice(0,3).map(p=>`<span class="chip">${h(typeof p==="string"?p:(p&&(p.name||p.label))||"")}</span>`).join("");
+        return `<div class="jentry" style="--mc:${m.c}">
+          <div class="jhead" ${jAttr(()=>go("/r/"+r.id))}>
+            <div class="jtitle">${h(r.headline||"Conversation")}</div>
+            ${r.summary?`<div class="jsub">${h(r.summary)}</div>`:""}
+            <div class="jmeta">${ppl}<span class="time">${h(rel(r.created_at))}</span></div></div>
+          ${acts.length?`<div class="jacts">${acts.map(t=>journalActionHTML(t,r)).join("")}</div>`:""}
+          <div class="jtools"><button class="cta line" ${jAttr(()=>go("/r/"+r.id))}>✦ Ask Lucid</button></div>
+        </div>`; }).join("");
+      return `<div class="daygroup jday"><div class="daylabel">${dl(d)}<span class="n">${days[d].length}</span></div>${entries}</div>`;
+    }).join("");
+    app.innerHTML=`<div class="view view--wide journal">
+      ${masthead({title:"Journal",note:openCount?`<b>${openCount}</b> thing${openCount>1?"s":""} from your conversations to act on.`:"Your conversations, captured.",wide:true})}
+      ${sections||`<div class="rv-empty"><div class="rv-empty-mark" style="color:var(--faint)">◌</div><div class="rv-empty-t">No conversations yet.</div><div class="rv-empty-s">Record something and it'll appear here with actions you can run.</div></div>`}</div>`;
+    paintDone(); bindJournal();
+  }
+  function journalActionHTML(t,r){ const kind=actKind(t);
+    const ic=kind==="calendar"?"&#128197;":kind==="email"?"&#9993;":"&#10003;";
+    const label=kind==="calendar"?"Add to calendar":kind==="email"?"Draft &amp; send":"Mark done";
+    let sub="";
+    if(kind==="calendar"){ const w=suggestTime(t.due); sub="Suggested: "+w.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})+", "+w.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); }
+    else if(kind==="email"){ const e=findEmail(t.owner); sub=t.owner?("To "+t.owner+(e?"":" — add an email")):"Compose an email"; }
+    else sub=[t.owner&&("— "+t.owner), t.due&&("due "+t.due)].filter(Boolean).join(" · ");
+    return `<div class="jcard jk-${kind}">
+      <span class="jic">${ic}</span>
+      <div class="jbody"><div class="jact-t">${h(t.text)}</div>${sub?`<div class="jact-s">${h(sub)}</div>`:""}</div>
+      <button class="jexec ${kind==="task"?"cta line":"cta solid"}" ${jAttr((e)=>execAction(kind,t,r,e&&e.target))}>${label}</button>
+    </div>`; }
+  async function execAction(kind,t,r,btn){
+    if(kind==="task"){ markTodoDone(todoId(t)); logActivity&&logActivity("done","To-do",t.text,"lucid_done_todos",todoId(t)); toast("Done &#10003;"); paintJournal(); return; }
+    if(kind==="email"){ return openDraftSheet(t,r); }
+    // calendar — create the real event
+    if(btn){ btn.disabled=true; btn.textContent="Adding…"; }
+    const w=suggestTime(t.due), end=new Date(w.getTime()+30*60000);
+    const res=await api("/api/actions/calendar",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({title:t.text, start:isoLocal(w), end:isoLocal(end), description:"From your Lucid note: "+(r.headline||"")})}).catch(e=>({ok:false,error:String(e.message)}));
+    if(res&&res.ok){ markTodoDone(todoId(t)); logActivity&&logActivity("done","Calendar",t.text,"lucid_done_todos",todoId(t));
+      toast("Added to calendar &#10003;", res.link?{label:"Open",ms:6000,run:()=>window.open(res.link,"_blank")}:undefined); paintJournal(); }
+    else { if(btn){ btn.disabled=false; btn.textContent="Add to calendar"; } toast("Couldn't add — "+((res&&res.error)||"calendar error")); }
+  }
+  function openDraftSheet(t,r){
+    const wrap=document.createElement("div"); wrap.className="sheet-wrap";
+    wrap.innerHTML=`<div class="sheet-bg"></div><div class="sheet draftsheet"><div class="sheet-grab"></div>
+      <div class="sheet-head"><div class="sheet-id"><div class="pname">Draft email</div><div class="prole">${h((t.text||"").slice(0,72))}</div></div>
+        <button class="sheet-close" aria-label="Close">&#10005;</button></div>
+      <div class="sheet-body draftbody">
+        <label class="dl">To</label><input class="dfield" id="dTo" type="email" inputmode="email" placeholder="name@email.com"/>
+        <label class="dl">Subject</label><input class="dfield" id="dSub" placeholder="Subject"/>
+        <label class="dl">Message</label><textarea class="dfield dbody" id="dBody" rows="7" placeholder="Drafting your email…"></textarea>
+        <div class="login-err" id="dErr"></div>
+        <div class="btnrow"><button class="btn primary" id="dSend">Send email</button><button class="btn ghost" id="dRedraft">Redraft</button></div>
+      </div></div>`;
+    document.body.appendChild(wrap); document.body.style.overflow="hidden";
+    const close=()=>{ wrap.remove(); document.body.style.overflow=""; };
+    wrap.querySelector(".sheet-bg").onclick=close; wrap.querySelector(".sheet-close").onclick=close;
+    const To=wrap.querySelector("#dTo"), Sub=wrap.querySelector("#dSub"), Body=wrap.querySelector("#dBody"), Err=wrap.querySelector("#dErr");
+    To.value=findEmail(t.owner);
+    const doDraft=async()=>{ Body.value=""; Body.placeholder="Drafting your email…"; Sub.value="";
+      const d=await api("/api/actions/draft",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({context:(r.summary||r.headline||""), intent:t.text, to_name:t.owner||""})}).catch(()=>({ok:false}));
+      if(d&&d.ok){ Sub.value=d.subject||t.text.slice(0,60); Body.value=d.body||""; }
+      else { Body.placeholder="Couldn't draft — write it yourself."; } };
+    doDraft();
+    wrap.querySelector("#dRedraft").onclick=doDraft;
+    wrap.querySelector("#dSend").onclick=async(e)=>{ const to=To.value.trim();
+      if(!/.+@.+\..+/.test(to)){ Err.textContent="Enter a valid recipient email."; return; }
+      e.target.disabled=true; Err.textContent="Sending…";
+      const res=await api("/api/actions/email",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({to:to, subject:(Sub.value.trim()||t.text), body:Body.value})}).catch(er=>({ok:false,error:String(er.message)}));
+      if(res&&res.ok){ markTodoDone(todoId(t)); logActivity&&logActivity("done","Email",t.text,"lucid_done_todos",todoId(t)); close(); toast("Email sent &#10003;"); paintJournal(); }
+      else { Err.textContent="Couldn't send — "+((res&&res.error)||"try again"); e.target.disabled=false; } };
+    requestAnimationFrame(()=>wrap.classList.add("open"));
+    setTimeout(()=>{ try{ (To.value?Sub:To).focus(); }catch(_){} },340);
   }
 
   function authOrError(e,retry){

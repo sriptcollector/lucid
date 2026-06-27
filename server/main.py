@@ -1067,6 +1067,33 @@ async def crm_board_override(request: Request) -> JSONResponse:
 
 
 # --------------------------------------------------------------------------- #
+# Action layer — turn spoken intents into real calendar events + sent email
+# --------------------------------------------------------------------------- #
+@app.post("/api/actions/calendar", dependencies=[Depends(auth)])
+async def action_calendar(request: Request) -> JSONResponse:
+    """Create a real Google Calendar event. body: {title,start,end,description?,location?,attendees?}."""
+    from .integrations import actions
+    return JSONResponse(await asyncio.to_thread(actions.create_event, await request.json()))
+
+
+@app.post("/api/actions/email", dependencies=[Depends(auth)])
+async def action_email(request: Request) -> JSONResponse:
+    """Send a real email through the connected account. body: {to,subject,body,html?}."""
+    from .integrations import actions
+    return JSONResponse(await asyncio.to_thread(actions.send_email, await request.json()))
+
+
+@app.post("/api/actions/draft", dependencies=[Depends(auth)])
+async def action_draft(request: Request) -> JSONResponse:
+    """Draft an email body from note context. body: {context,intent,owner?,to_name?}."""
+    from .integrations import actions
+    b = await request.json()
+    return JSONResponse(await asyncio.to_thread(
+        actions.draft_email, b.get("context", ""), b.get("intent", ""),
+        b.get("owner", "") or settings.owner_name, b.get("to_name", "")))
+
+
+# --------------------------------------------------------------------------- #
 # Web UI — setup gate + SPA (served last so /api/* wins)
 # --------------------------------------------------------------------------- #
 def _spa() -> FileResponse:
@@ -1093,6 +1120,7 @@ def setup_page():
 @app.get("/lucid")
 @app.get("/lucid/{seg}")
 @app.get("/crm/{email}")
+@app.get("/journal")
 @app.get("/notes")
 @app.get("/search")
 @app.get("/settings")
