@@ -574,21 +574,21 @@ const App = (() => {
         kind:d?"Draft ready":(c.action==="follow_up"?"Follow up":"Reply"),
         title:c.name||c.company||c.email, sub:c.situation||c.summary||"",
         cta:d?"Copy draft":"Open", copy:d?c.draft:"", go:()=>go("/crm/"+encodeURIComponent(c.email)),
-        done:()=>{ markBrief(id); clear(); } }); });
+        done:()=>{ markBrief(id); logActivity("read","Reply",c.name||c.company||c.email,"lucid_seen_brief",id); clear(); } }); });
     (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&keepRec(r)).slice(0,4).forEach(r=>{ const id="tense:"+r.id;
       out.push({ id, domain:"var(--ten)", mark:"⚠", sort:2, kind:"Tense note",
         title:r.headline||"Conversation", sub:r.summary||"", cta:"Review", go:()=>go("/r/"+r.id),
-        done:()=>{ markSeen(r.id); markBrief(id); clear(); } }); });
+        done:()=>{ markSeen(r.id); markBrief(id); logActivity("read","Tense note",r.headline||"Conversation","lucid_seen_brief",id); clear(); } }); });
     (b.vens||[]).filter(v=>!v.has_spec).slice(0,3).forEach(v=>{ const id="idea:"+v.id;
       out.push({ id, domain:"var(--topic)", mark:"◆", sort:3, kind:"Idea",
         title:v.title, sub:v.summary||"No build plan yet", cta:"Generate plan",
         go:()=>go("/ventures/"+encodeURIComponent(v.id)),
-        done:()=>{ markBrief(id); clear(); } }); });
+        done:()=>{ markBrief(id); logActivity("read","Idea",v.title,"lucid_seen_brief",id); clear(); } }); });
     (b.tasks||[]).filter(keepAi).forEach(t=>{ const key=todoId(t), id="todo:"+key; if(dt.has(key)) return;
       out.push({ id, domain:"var(--pos)", mark:"☑", sort:4, kind:"To-do", title:t.text,
         sub:[t.owner?("— "+t.owner):"", t.due?("due "+t.due):"", t.note_headline].filter(Boolean).join(" · "),
         cta:"Open", go:()=>go("/r/"+t.note_id),
-        done:()=>{ markTodoDone(key); markBrief(id); clear("Done ✓"); } }); });
+        done:()=>{ markTodoDone(key); markBrief(id); logActivity("done","To-do",t.text,"lucid_done_todos",key); clear("Done ✓"); } }); });
     return out.filter(it=>!seen.has(it.id)).sort((a,c)=>a.sort-c.sort);
   }
   function figures(b){
@@ -870,6 +870,15 @@ const App = (() => {
   const markSeen =(id)=>{ const s=new Set(_lsGet("lucid_seen_notes")); s.add(id); _lsSet("lucid_seen_notes",[...s]); };
   const briefSeen=()=>new Set(_lsGet("lucid_seen_brief"));
   const markBrief=(id)=>{ const s=new Set(_lsGet("lucid_seen_brief")); s.add(id); _lsSet("lucid_seen_brief",[...s]); };
+  // activity log — a visible history of everything you mark read/done (with undo)
+  const activityLog=()=>_lsGet("lucid_activity");
+  const logActivity=(type,kind,title,store,sid)=>{ try{ const a=_lsGet("lucid_activity");
+    a.unshift({type,kind,title:(title||"").slice(0,140),ts:Date.now(),store:store||"",sid:sid||""});
+    _lsSet("lucid_activity",a.slice(0,300)); }catch(_){} };
+  const undoActivity=(idx)=>{ const a=_lsGet("lucid_activity"); const e=a[idx]; if(!e) return;
+    if(e.store&&e.sid){ const s=new Set(_lsGet(e.store)); s.delete(e.sid); _lsSet(e.store,[...s]); }
+    a.splice(idx,1); _lsSet("lucid_activity",a); };
+  const clearActivity=()=>_lsSet("lucid_activity",[]);
   const markTodoDone=(key)=>{ const s=new Set(_lsGet("lucid_done_todos")); s.add(key); _lsSet("lucid_done_todos",[...s]); };
 
   async function showReview(){
@@ -915,7 +924,7 @@ const App = (() => {
         kind: t.owner?("To-do · "+t.owner):"To-do", title:t.text, sub:t.note_headline||"",
         pills: overdue?[{t:t.due,cls:"warn"}]:[], time: fresh?"new":"",
         open: t.note_id?()=>go("/r/"+t.note_id):null,
-        actions:[{label:"Done", primary:true, run:(row)=>completeTodo(id,row)}] });
+        actions:[{label:"Done", primary:true, run:(row)=>completeTodo(id,row,t.text)}] });
     });
     // 3 — tense notes today
     (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&isToday(r.created_at)&&!seen.has(r.id)&&keepRec(r)).forEach(r=>{
@@ -1001,9 +1010,13 @@ const App = (() => {
     const ribbon=[{f:"all",n:all.length}].concat(RV_FILTERS.slice(1).map(x=>({f:x.f,n:counts[x.f]||0})))
       .map(x=>{ const def=RV_FILTERS.find(r=>r.f===x.f)||{};
         return `<button class="statcard${reviewFilter===x.f?" on":""}" data-f="${x.f}" style="--mc:${def.col}">
-          <span class="figure">${x.n}</span><span class="figcap">${h(def.cap)}</span></button>`; }).join("");
+          <span class="figure">${x.n}</span><span class="figcap">${h(def.cap)}</span></button>`; }).join("")
+      + `<button class="statcard${reviewFilter==="done"?" on":""}" data-f="done" style="--mc:var(--ink-3)">
+          <span class="figure">${activityLog().length}</span><span class="figcap">Done</span></button>`;
     let body;
-    if(!all.length){
+    if(reviewFilter==="done"){
+      body=renderActivity(activityLog());
+    } else if(!all.length){
       const filed=(b.recs||[]).filter(r=>r.status==="done"&&new Date(r.created_at).toDateString()===now.toDateString()).length;
       body=`<div class="rv-empty"><div class="rv-empty-mark">✓</div>
         <div class="rv-empty-t">Nothing needs you.</div>
@@ -1019,7 +1032,7 @@ const App = (() => {
           <div class="rvqueue">${rows.map(rvRow).join("")}</div></div>`; }).join("");
     }
     const doneN=(b.tasks||[]).filter(t=>doneTodos().has(todoId(t))).length;
-    const doneBar = doneN ? `<div class="rv-donebar"><span>✓ ${doneN} to-do${doneN>1?"s":""} done today</span>
+    const doneBar = (reviewFilter!=="done" && doneN) ? `<div class="rv-donebar"><span>✓ ${doneN} to-do${doneN>1?"s":""} done today</span>
       <button class="rv-undo" id="rvUndo">Undo last</button></div>` : "";
     app.innerHTML=`<div class="view view--wide review2">
       ${masthead({title:"Review", note:ed, wide:true})}
@@ -1033,6 +1046,29 @@ const App = (() => {
         e.stopPropagation(); const a=it.actions[+btn.dataset.act]; if(a&&a.run) a.run(row,btn); }); });
     const ub=document.getElementById("rvUndo");
     if(ub) ub.onclick=()=>{ const arr=_lsGet("lucid_done_todos"); arr.pop(); _lsSet("lucid_done_todos",arr); toast("Undone"); paintReview(_rvData); };
+    app.querySelectorAll(".actrow [data-undo]").forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); undoActivity(+b.dataset.undo); toast("Restored"); paintReview(_rvData); });
+    const ac=document.getElementById("actClear");
+    if(ac) ac.onclick=()=>{ if(!confirm("Clear your done/read history?")) return; clearActivity(); toast("History cleared"); paintReview(_rvData); };
+  }
+
+  function relTs(ts){ try{ return rel(new Date(ts).toISOString()); }catch(_){ return ""; } }
+  function renderActivity(log){
+    if(!log.length) return `<div class="rv-empty"><div class="rv-empty-mark">◌</div>
+      <div class="rv-empty-t">Nothing cleared yet.</div>
+      <div class="rv-empty-s">Everything you mark read or done shows up here — with an undo.</div></div>`;
+    const today=new Date().toDateString(), yd=new Date(Date.now()-864e5).toDateString();
+    const dl=(d)=> d===today?"Today":d===yd?"Yesterday":new Date(d).toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+    const groups={};
+    log.forEach((e,i)=>{ const d=new Date(e.ts).toDateString(); (groups[d]=groups[d]||[]).push(Object.assign({_idx:i},e)); });
+    return Object.keys(groups).map(d=>`<div class="daygroup">
+        <div class="daylabel">${dl(d)}<span class="n">${groups[d].length}</span></div>
+        <div class="rvqueue">${groups[d].map(e=>`<div class="rvitem actrow" style="--domain:${e.type==="done"?"var(--positive)":"var(--ink-3)"}">
+          <span class="rv-chip"><span>${e.type==="done"?"✓":"·"}</span></span>
+          <div class="rv-main"><div class="rv-kind">${h(e.kind)}</div><div class="rv-title">${h(e.title)}</div>
+            <div class="rv-meta"><span class="rv-time">${h(relTs(e.ts))}</span></div></div>
+          ${e.store?`<div class="rv-act"><button class="rv-cta" data-undo="${e._idx}">Undo</button></div>`:""}
+        </div>`).join("")}</div></div>`).join("")
+      + `<div class="rv-donebar"><span>${log.length} cleared</span><button class="rv-undo" id="actClear">Clear history</button></div>`;
   }
 
   function collapseRow(row, after){
@@ -1043,8 +1079,9 @@ const App = (() => {
     let fired=false; const fin=()=>{ if(fired)return; fired=true; after&&after(); };
     row.addEventListener("transitionend",fin,{once:true}); setTimeout(fin,340);
   }
-  function completeTodo(id,row){
+  function completeTodo(id,row,title){
     const arr=_lsGet("lucid_done_todos"); if(!arr.includes(id)){ arr.push(id); _lsSet("lucid_done_todos",arr); }
+    logActivity("done","To-do",title||"To-do","lucid_done_todos",id);
     toast("Done ✓"); collapseRow(row, ()=>paintReview(_rvData));
   }
   async function generatePlan(vid,row){
