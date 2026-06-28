@@ -2027,3 +2027,39 @@ body::before{
 .draftbody .dfield::placeholder{ color:var(--ink-4); }
 .draftbody .dbody{ resize:vertical; min-height:120px; font-family:inherit; line-height:1.5; }
 .draftbody .btnrow{ margin-top:12px; }
+
+/* ===== HOME / BRIEF — brighter glass, more breathing room, calmer rows ===== */
+.brief{ padding-bottom:96px; }
+.brief .deck{ gap:16px; }
+/* panels pop off the Midnight backdrop instead of muddying into it */
+.brief .panel{ background:var(--surface-hi); border:1px solid var(--glass-border-strong);
+  border-radius:var(--radius-lg); box-shadow:var(--glass-lip), var(--shadow-sm); padding:22px 22px 18px; }
+.brief .panel > h2{ font-family:var(--font-sans); font-size:.75rem; font-weight:var(--w-semi);
+  letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  display:flex; align-items:center; gap:9px; margin:0 0 15px; }
+.brief .panel > h2 .hcount{ font-size:.6875rem; font-weight:700; color:var(--accent-ink);
+  background:var(--accent-quiet); border:1px solid var(--accent-line); border-radius:999px; padding:1px 9px; letter-spacing:0; }
+/* the Needs-you panel is the hero — accent edge + brighter */
+.brief .deck > .sp-7{ border-color:var(--accent-line); box-shadow:var(--glass-lip), var(--shadow-sm), var(--glow-accent-soft); }
+/* worklist rows — roomier, top-aligned, calm */
+.brief .queue{ margin:-2px 0; }
+.brief .qrow{ gap:13px; align-items:flex-start; padding:15px 4px; border-bottom:1px solid var(--line); border-radius:0; }
+.brief .qrow:first-child{ padding-top:2px; } .brief .qrow:last-child{ border-bottom:none; padding-bottom:2px; }
+.brief .qrow:hover{ background:transparent; }
+.brief .qmark{ width:22px; font-size:15px; margin-top:2px; opacity:.9; }
+.brief .qkind{ font-size:9.5px; letter-spacing:.08em; color:var(--domain,var(--ink-3)); margin-bottom:4px; }
+.brief .qtitle{ font-size:.9375rem; font-weight:var(--w-semi); line-height:1.4; color:var(--ink); }
+.brief .qsub{ font-size:.8125rem; color:var(--ink-3); margin-top:4px; line-height:1.45; }
+.brief .qacts{ gap:7px; margin-top:3px; flex-shrink:0; }
+/* stat ribbon — brighter cards with presence */
+.brief .figrow{ gap:11px; margin:18px 0 4px; }
+.brief .statcard{ background:var(--surface-hi); border:1px solid var(--glass-border-strong);
+  border-left:3px solid var(--mc,var(--domain,var(--accent))); border-radius:var(--radius-md);
+  box-shadow:var(--glass-lip-soft), var(--shadow-xs); padding:14px 15px; }
+.brief .figure{ font-size:1.9rem; color:var(--ink); letter-spacing:-0.01em; }
+.brief .figcap{ color:var(--ink-3); font-size:.68rem; letter-spacing:.06em; margin-top:3px; }
+/* review CTA — a bit more substantial + glow */
+.brief .reviewcta{ padding:16px 18px; border-radius:var(--radius-lg);
+  box-shadow:var(--glass-lip), var(--shadow-sm); margin:6px 0 2px; }
+.brief .minirow{ padding:11px 0; } .brief .minirow:last-child{ padding-bottom:2px; }
+.brief .seeall{ display:inline-block; margin-top:12px; color:var(--accent-ink); font-weight:var(--w-med); }
