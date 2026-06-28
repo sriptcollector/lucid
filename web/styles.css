@@ -2747,3 +2747,96 @@ body::before{ display:none !important; }
 }
 [data-theme="light"] .appbar,[data-theme="light"] .lucidbar,[data-theme="light"] .searchhead{ background:var(--bg); }
 [data-theme="light"] body::before{ display:none !important; }
+
+/* ════════════════════════════════════════════════════════════
+   PREMIUM PASS — applies the installed design-skill mandates on
+   top of the flat Midnight look: editorial serif display, mono
+   tabular numerics, scarce Maya accent, muted spot-pastel tags,
+   macro-whitespace, and flat press micro-interactions.
+   Appended last so it wins. IA / routes / class names unchanged.
+   ════════════════════════════════════════════════════════════ */
+:root{
+  /* Geist Mono leads the mono stack (loaded in index.html) */
+  --font-mono:"Geist Mono","SF Mono",ui-monospace,"Cascadia Code",Menlo,monospace;
+  /* low-chroma neutral tag wash + readable ink */
+  --tag-bg:color-mix(in oklch,var(--ink) 7%,transparent);
+  --tag-ink:var(--ink-2);
+}
+
+/* ---- 1 · TYPOGRAPHY — tight editorial display, calmer prose ---- */
+.hero h1,.dhero h1,.login-card h2,.welcome-card h2{ letter-spacing:-0.026em; line-height:1.06; }
+.hero h1{ font-size:35px; }
+.lead,.snip,.rbody .snip,.rv-sub,.qsub,.qtitle,.ednote,.jsub,.idea-d,.vv,.dirphrase,.empty .hint,.cmsg{
+  line-height:1.55;
+}
+.ednote{ color:var(--ink-2); }
+
+/* ---- 2 · MONOSPACE + TABULAR NUMERICS — every figure, time, count, duration, date ---- */
+.figure,
+.hero h1 .count,.panel h2 .hcount,.brief .panel>h2 .hcount,.lanehead .n,
+.daylabel .n,.owelane .lanehead .n,.filterbar .fn,.fchip .fn,
+.time,.rv-time,.mtime,.evt,.tdate,.qt,.at,.pdyn .at,.reldyn .at,.qcard .qt,
+.seg .t,.scrub .ticks span,.mnode .mtime,.pcount,.fresh,.chip.num,.vscore,
+.kv .v code,.linkrow code,.summarybox{
+  font-family:var(--font-mono);
+  font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1,"lnum" 1;
+  letter-spacing:0;
+}
+.figure{ font-weight:500; letter-spacing:-0.01em; }
+.statcard .figcap{ color:var(--ink-3); }
+
+/* ---- 3 · SCARCE ACCENT — pull Maya off decoration; reserve it for
+   the primary action + active state. Decorative marks go neutral. ---- */
+.kp li::before{ background:var(--ink-4); }
+.li-ic,.act .bx{ color:var(--ink-3); }
+.qcard,.sq,.cq,.pquote,.tcard .pquote{ border-left-color:var(--line-strong); }
+.seg .spk,.vsrc,.idea-by,.spkbar .spkchip.known{ color:var(--ink-2); }
+.arc{ color:var(--ink-3); }
+.dirsec .lbl,.vsec-h{ color:var(--ink-4); }
+
+/* ---- 4 · MUTED SPOT-PASTEL TAGS — small, uppercase, wide tracking,
+   crisp 6px corners (no rounded-full on badges) ---- */
+.chip,.rv-pill,.idea-st,.persp-s,.vspec,.vpri,.recbadge,.vbadge,.aliaschip,.reldyn .rnat{
+  border-radius:6px; text-transform:uppercase; letter-spacing:0.06em;
+  font-size:10.5px; font-weight:700; padding:4px 8px; line-height:1.25;
+}
+.chip{ background:var(--tag-bg); color:var(--tag-ink); border:1px solid transparent; }
+.chip.num{ text-transform:none; letter-spacing:0; font-weight:600; font-size:11.5px; }
+.chip.mood{ background:color-mix(in oklch,var(--mc,var(--ink)) 15%,transparent); color:var(--mc,var(--ink-2)); }
+.chip.stage{ background:var(--tag-bg); color:var(--ink-3); }
+.chip.owe{ background:color-mix(in oklch,var(--critical) 14%,transparent); color:var(--critical-ink); }
+.chip.draftready,.vspec{ background:color-mix(in oklch,var(--positive) 14%,transparent); color:var(--positive-ink); }
+.rv-pill{ border-radius:6px; }
+.rv-pill.go{ background:color-mix(in oklch,var(--accent) 14%,transparent); color:var(--accent-ink); border-color:transparent; }
+.rv-pill.warn{ background:color-mix(in oklch,var(--caution) 16%,transparent); color:var(--caution-ink); border-color:transparent; }
+/* filter chips — editorial label feel, crisp-ish corners (active stays ink-fill) */
+.fchip{ border-radius:8px; text-transform:uppercase; letter-spacing:0.05em; font-size:11.5px; font-weight:650; }
+
+/* ---- 5 · MACRO-WHITESPACE — let cards and sections breathe ---- */
+.rcard{ padding:18px 20px; gap:16px; }
+.crmcard,.pcard{ padding:18px 20px; }
+.vcard,.dircard,.projcard{ padding:20px; }
+.feed{ gap:12px; }
+.panel{ padding:24px; }
+.daygroup{ margin-top:30px; }
+.filterbar{ margin-bottom:20px; }
+.figrow{ gap:11px; margin:16px 0 10px; }
+
+/* ---- 6 · FLAT PRESS MICRO-INTERACTION (scale .98) ---- */
+.rcard,.pcard,.vcard,.dircard,.crmcard,.notecard,.idea-card,.idea,.projcard,
+.statcard,.qrow,.rvitem,.owerow,.evpill,.reviewcta,.wc-step,.minirow,
+.btn,.cta,.qcta,.fchip,.iconbtn,.rv-cta,.spkchip,.proof,.csend,.fab,.seg-lucid button{
+  transition: transform .13s var(--ease), background-color .14s var(--ease),
+              border-color .14s var(--ease), box-shadow .14s var(--ease), color .14s var(--ease);
+}
+.rcard:active,.pcard:active,.vcard:active,.dircard:active,.crmcard:active,.notecard:active,
+.idea-card:active,.idea:active,.projcard:active,.statcard:active,.qrow:active,.rvitem:active,
+.owerow:active,.evpill:active,.reviewcta:active,.wc-step:active,.minirow:active,
+.btn:active,.cta:active,.qcta:active,.fchip:active,.iconbtn:active,.rv-cta:active,
+.proof:active,.csend:active,.fab:active{ transform:scale(.98); }
+
+@media (prefers-reduced-motion:reduce){
+  .rcard:active,.pcard:active,.vcard:active,.dircard:active,.crmcard:active,.notecard:active,
+  .statcard:active,.qrow:active,.rvitem:active,.owerow:active,.reviewcta:active,
+  .btn:active,.cta:active,.qcta:active,.iconbtn:active,.fchip:active{ transform:none; }
+}

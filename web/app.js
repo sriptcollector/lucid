@@ -197,7 +197,25 @@ const App = (() => {
     if(__navPaint){ __navPaint=false; } else if(_v){ _v.classList.add('is-repaint'); }
     if(_scrollTarget!=null){ const y=_scrollTarget; _scrollTarget=null; requestAnimationFrame(()=>window.scrollTo(0,y)); }
     a11yEnhance();
-    if(wasNav && _v){ _v.setAttribute('tabindex','-1'); _v.focus({preventScroll:true}); } }
+    if(wasNav && _v){ _v.setAttribute('tabindex','-1'); _v.focus({preventScroll:true}); animateIn(_v); } }
+  // GSAP entrance — stagger the freshly-rendered view's primary cards/rows in (nav paints only,
+  // never on poll/filter repaints; reduced-motion + missing-gsap safe). transform + opacity only.
+  function animateIn(scope){
+    if(!scope || !window.gsap || matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+    const sel=".statcard,.reviewcta,.rcard,.pcard,.vcard,.dircard,.crmcard,.notecard,.idea-card,.idea,"
+      +".projcard,.panel,.qrow,.rvitem,.owerow,.minirow,.evpill,.jentry,.welcome-card,.wc-step,"
+      +".duprow,.revrow,.tinter";
+    const all=[...scope.querySelectorAll(sel)];
+    // keep only leaf-most matches so a container and its inner cards don't double-animate
+    const targets=all.filter(el=>!all.some(o=>o!==el && el.contains(o))).slice(0,28);
+    if(!targets.length) return;
+    try{
+      window.gsap.killTweensOf(targets);
+      window.gsap.from(targets,{ autoAlpha:0, y:12, duration:0.34, ease:"power3.out",
+        stagger: targets.length>16 ? {amount:0.42} : 0.03,
+        clearProps:"transform,opacity,visibility", overwrite:"auto" });
+    }catch(_){}
+  }
 
   // ===== LUCID HUB — Notes · People · Ideas under one tab =====
   const LUCID_SEGS=["notes","people","ideas","projects"];
@@ -292,7 +310,7 @@ const App = (() => {
         <div class="snip">${h(c.name!==(c.company||c.name)?c.name+" · ":"")}${h(c.summary||"")}</div>
         <div class="rmeta">
           ${owe?`<span class="chip owe">${h(c.situation||"Owe a reply")}</span>`:""}
-          ${owe&&c.draft?`<span class="chip draftready">✍ draft ready</span>`:""}
+          ${owe&&c.draft?`<span class="chip draftready">✎ draft ready</span>`:""}
           ${c.stage?`<span class="chip stage">${h(c.stage)}</span>`:""}
           ${meta.map(m=>`<span class="chip stage">${h(m)}</span>`).join("")}
           <span class="time">${relTs(c.last_ts||Date.now())}</span>
@@ -309,7 +327,7 @@ const App = (() => {
       </div>
       <span class="ow-t">${relTs(c.last_ts||Date.now())}</span>
       ${c.draft
-        ? `<button class="cta solid" data-copy="${h(c.email)}">✍ Copy draft</button>`
+        ? `<button class="cta solid" data-copy="${h(c.email)}">✎ Copy draft</button>`
         : `<button class="cta line" data-open="${h(c.email)}">Reply →</button>`}
     </div>`;
   }
@@ -422,7 +440,7 @@ const App = (() => {
     app.querySelectorAll(".revrow [data-ov]").forEach(b=>b.onclick=(e)=>{
       e.stopPropagation(); const row=b.closest(".revrow"); crmOverride(row.dataset.email, b.dataset.ov);
     });
-   }catch(e){ app.innerHTML=`<div class="view"><div class="empty">⚠ Couldn't render the CRM board.<br><br><button class="btn" id="crmReload">Reload</button></div></div>`;
+   }catch(e){ app.innerHTML=`<div class="view"><div class="empty">△ Couldn't render the CRM board.<br><br><button class="btn" id="crmReload">Reload</button></div></div>`;
      const rb=document.getElementById("crmReload"); if(rb) rb.onclick=()=>showCRM(); }
   }
 
@@ -467,7 +485,7 @@ const App = (() => {
         <div class="qtext">${h(c.draft)}</div>
         <div class="qmeta">
           <span class="qspk">Draft${c.name||c.company?` · to ${h(c.name||c.company)}`:""}</span>
-          <button class="cta solid" id="copyDraft">✍ Copy</button>
+          <button class="cta solid" id="copyDraft">✎ Copy</button>
         </div></div></div>`:"";
 
     const tl=(c.timeline||[]).slice().reverse().map(t=>{
@@ -652,7 +670,7 @@ const App = (() => {
         ${r.summary?`<div class="snip">${h(r.summary)}</div>`:""}
         <div class="rmeta">
           ${done?`<span class="chip mood">${m.w}</span>`:proc}
-          ${r.duration?`<span class="chip">${fmt(r.duration)}</span>`:""}
+          ${r.duration?`<span class="chip num">${fmt(r.duration)}</span>`:""}
           ${ppl?`<span class="chip">${ppl} ${ppl>1?"people":"person"}</span>`:""}
           ${topics}
           <span class="time">${h(rel(r.created_at))}</span>
@@ -715,13 +733,13 @@ const App = (() => {
     const out=[], seen=briefSeen(), dt=doneTodos();
     const clear=(msg)=>{ paintBrief(); toast(msg||"Marked read"); };
     (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{ const d=!!c.draft, id="reply:"+c.email+":"+(Date.parse(c.last_ts)||0);
-      out.push({ id, domain:stageColor(c), mark:"✍", sort:d?0:1,
+      out.push({ id, domain:stageColor(c), mark:"✎", sort:d?0:1,
         kind:d?"Draft ready":(c.action==="follow_up"?"Follow up":"Reply"),
         title:c.name||c.company||c.email, sub:c.situation||c.summary||"",
         cta:d?"Copy draft":"Open", copy:d?c.draft:"", go:()=>go("/crm/"+encodeURIComponent(c.email)),
         done:()=>{ markBrief(id); logActivity("read","Reply",c.name||c.company||c.email,"lucid_seen_brief",id); clear(); } }); });
     (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&keepRec(r)).slice(0,4).forEach(r=>{ const id="tense:"+r.id;
-      out.push({ id, domain:"var(--ten)", mark:"⚠", sort:2, kind:"Tense note",
+      out.push({ id, domain:"var(--ten)", mark:"△", sort:2, kind:"Tense note",
         title:r.headline||"Conversation", sub:r.summary||"", cta:"Review", go:()=>go("/r/"+r.id),
         done:()=>{ markSeen(r.id); markBrief(id); logActivity("read","Tense note",r.headline||"Conversation",[{store:"lucid_seen_brief",sid:id},{store:"lucid_seen_notes",sid:r.id}]); clear(); } }); });
     (b.vens||[]).filter(v=>!v.has_spec).slice(0,3).forEach(v=>{ const id="idea:"+v.id;
@@ -730,7 +748,7 @@ const App = (() => {
         go:()=>go("/ventures/"+encodeURIComponent(v.id)),
         done:()=>{ markBrief(id); logActivity("read","Idea",v.title,"lucid_seen_brief",id); clear(); } }); });
     (b.tasks||[]).filter(keepAi).forEach(t=>{ const key=todoId(t), id="todo:"+key; if(dt.has(key)) return;
-      out.push({ id, domain:"var(--pos)", mark:"☑", sort:4, kind:"To-do", title:t.text,
+      out.push({ id, domain:"var(--pos)", mark:"□", sort:4, kind:"To-do", title:t.text,
         sub:[t.owner?("— "+t.owner):"", t.due?("due "+t.due):"", t.note_headline].filter(Boolean).join(" · "),
         cta:"Open", go:()=>go("/r/"+t.note_id),
         done:()=>{ markTodoDone(key); markBrief(id); logActivity("done","To-do",t.text,[{store:"lucid_done_todos",sid:key},{store:"lucid_seen_brief",sid:"todo:"+key}]); clear("Done ✓"); } }); });
@@ -1085,7 +1103,7 @@ const App = (() => {
       const client=!!c.is_client, lead=!client&&c.bucket!=="business", draft=!!c.draft;
       const ageH=(now-new Date(c.last_ts||now))/3600000;
       const score=(client?100:lead?80:60)+(draft?8:0)+(ageH<24?6:ageH<72?2:0);
-      items.push({ type:"reply", score, glyph:draft?"✍":"✉", domain:stageColor(c),
+      items.push({ type:"reply", score, glyph:draft?"✎":"@", domain:stageColor(c),
         kind: client?"Client · owes you a reply" : lead?"Lead · owes you a reply" : "Owes you a reply",
         title:c.name||c.company||c.email, sub:c.situation||c.summary||"Waiting on your reply",
         pills: draft?[{t:"draft ready",cls:"go"}]:[],
@@ -1107,7 +1125,7 @@ const App = (() => {
     });
     // 3 — tense notes today
     (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&isToday(r.created_at)&&!seen.has(r.id)&&keepRec(r)).forEach(r=>{
-      items.push({ type:"triage", score:72, glyph:"⚠", domain:"var(--critical)",
+      items.push({ type:"triage", score:72, glyph:"△", domain:"var(--critical)",
         kind:"Tense note · review", title:r.headline||"Conversation",
         sub:r.summary||"A tense moment worth a second look", pills:[], time:rel(r.created_at),
         seenId:r.id, open:()=>go("/r/"+r.id),
@@ -1401,7 +1419,7 @@ const App = (() => {
         const words=(e.top_words||[]).slice(0,8).map(w=>`<span class="word">${h(w)}</span>`).join("");
         const phr=(e.phrases||[]).map(p=>`<div class="dirphrase">&ldquo;${h(p)}&rdquo;</div>`).join("");
         const al=(e.aliases||[]).length?`<div class="aliasrow">${e.aliases.map(a=>`<span class="aliaschip">aka ${h(a)}</span>`).join("")}</div>`:"";
-        const voice=e.has_voice?`<span>&#127908; voice &times;${e.voice_samples}</span>`:"";
+        const voice=e.has_voice?`<span>∿ voice &times;${e.voice_samples}</span>`:"";
         const col=e.recognition==="strong"?"var(--pos)":e.recognition==="learning"?"var(--accent)":"var(--neu)";
         return `<div class="dircard" data-id="${attr(e.id)}" style="--mc:${col}">
           <div class="dirtop"><div class="tile mono"><span>${h(pInitials(e.name))}</span></div>
@@ -2105,7 +2123,7 @@ const App = (() => {
         ${a.topics.map(t=>`<span class="chip tap" data-seek="${t.start}">${h(t.label)} · ${fmt(t.start)}</span>`).join("")}</div></div>`:""}
 
       ${a.action_items?.length?`<div class="panel"><h2>Action items</h2>
-        ${a.action_items.map(ai=>`<div class="act"><span class="bx">☑</span><span>${h(ai.text)}
+        ${a.action_items.map(ai=>`<div class="act"><span class="bx">□</span><span>${h(ai.text)}
           ${ai.owner?`<span style="color:var(--muted)"> — ${h(ai.owner)}</span>`:""}</span></div>`).join("")}</div>`:""}
 
       <div class="panel"><div class="btnrow">
@@ -2202,7 +2220,7 @@ const App = (() => {
     const order=[]; const seen=new Set();
     segs.forEach(s=>{ if(s.speaker&&!seen.has(s.speaker)){ seen.add(s.speaker); order.push(s.speaker); } });
     const spkBar = order.length ? `<div class="spkbar">${order.map(sp=>
-        `<button class="spkchip ${isUnnamedSpk(sp)?'unnamed':'known'}" data-rename="${attr(sp)}">${isUnnamedSpk(sp)?'🎤 ':'🗣 '}${h(sp)}${isUnnamedSpk(sp)?' · name':''}</button>`).join("")}</div>
+        `<button class="spkchip ${isUnnamedSpk(sp)?'unnamed':'known'}" data-rename="${attr(sp)}">${isUnnamedSpk(sp)?'+ ':'∿ '}${h(sp)}${isUnnamedSpk(sp)?' · name':''}</button>`).join("")}</div>
       ${order.some(isUnnamedSpk)?`<div class="spkhint">Tap a speaker to name them — Lucid learns their voice and recognizes them automatically in future recordings.</div>`:""}` : "";
     return `<div class="panel">
       ${spkBar}
@@ -2413,7 +2431,7 @@ const App = (() => {
         chatHist.push({role:"assistant", content:r.answer||"", quotes:r.quotes||[]});
         if (r.applied_edits && r.applied_edits.length){ cache=[]; searchIdx=null; toast("Updated names"); try{ current=await api(`/api/recordings/${current.id}`);}catch(e){} if(document.getElementById("tabbody")) renderTab(); }
         renderChatMsgs(box); box.scrollTop=box.scrollHeight;
-      }catch(e){ chatHist.push({role:"assistant", content:"⚠ "+(e.message||"failed"), quotes:[]}); renderChatMsgs(box); }
+      }catch(e){ chatHist.push({role:"assistant", content:"△ "+(e.message||"failed"), quotes:[]}); renderChatMsgs(box); }
     };
     send.onclick=doSend; input.onkeydown=e=>{ if(e.key==="Enter") doSend(); };
     requestAnimationFrame(()=>wrap.classList.add("open")); setTimeout(()=>input.focus(),320);
@@ -2434,7 +2452,7 @@ const App = (() => {
     const share = url ? `<div class="sharebox">
         <div class="badge"><span class="dot"></span>Your link is live</div>
         <div style="font-size:14px;color:var(--ink-soft);margin-bottom:12px;line-height:1.45">Open Lucid from your phone anywhere — it’s protected by your password.</div>
-        <div class="linkrow"><span>🔗</span><code id="shareUrl">${h(url)}</code><span class="copy" id="copyLink">Copy</span></div>
+        <div class="linkrow"><span>↗</span><code id="shareUrl">${h(url)}</code><span class="copy" id="copyLink">Copy</span></div>
         <button class="btn ghost" id="restartTun" style="width:100%">Restart public link</button>
       </div>` : `<div class="sharebox"><div class="badge" style="color:var(--muted)"><span class="dot" style="background:var(--muted);animation:none"></span>Public link starting…</div>
         <div style="font-size:13.5px;color:var(--muted)">Your Cloudflare link will appear here shortly — reopen Settings to refresh.</div></div>`;
@@ -2485,7 +2503,7 @@ const App = (() => {
         <div class="kv"><span class="k">Voice enrolled</span><span class="v ${enrolled.length?'ok':''}">${enrolled.length?h(enrolled.join(', ')):'not yet'}</span></div>
         <div class="btnrow" style="margin-top:12px">
           <button class="btn ghost" id="ownerSave">Save name</button>
-          <button class="btn" id="voiceEnroll">🎙 Record my voice</button></div>
+          <button class="btn" id="voiceEnroll">● Record my voice</button></div>
         <div id="voiceMsg" style="font-size:13px;color:var(--muted);margin-top:10px"></div>
       </div>`;
 
@@ -2513,7 +2531,7 @@ const App = (() => {
         <div class="kv"><span class="k">Plaud account</span><span class="v ${st.plaud_connected?"ok":"bad"}">${st.plaud_connected?h(st.plaud_email||"connected"):"not connected"}</span></div>
         <div class="kv"><span class="k">Sync interval</span><span class="v">${st.plaud_poll_interval||300}s</span></div>
         <div class="kv"><span class="k">Telegram</span><span class="v ${st.telegram_connected?"ok":""}">${st.telegram_connected?(st.telegram_chat_known?"connected":"connected · message your bot"):"off"}</span></div>
-        <div class="btnrow" style="margin-top:14px"><a class="btn ghost" href="/setup">Re-run setup</a>${st.telegram_connected&&st.telegram_chat_known?`<button class="btn ghost" id="tgSend">📲 Send link to my phone</button>`:""}</div>
+        <div class="btnrow" style="margin-top:14px"><a class="btn ghost" href="/setup">Re-run setup</a>${st.telegram_connected&&st.telegram_chat_known?`<button class="btn ghost" id="tgSend">→ Send link to my phone</button>`:""}</div>
       </div>
       ${crmPanel}
       ${calPanel}
@@ -2595,7 +2613,7 @@ const App = (() => {
     const rec=new MediaRecorder(stream); const chunks=[]; let secs=0;
     rec.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
     const tick=setInterval(()=>{ secs++; if(msg) msg.textContent=`Recording… ${secs}s (tap to stop, ~30s is ideal)`; if(secs>=45) btn._stop(); },1000);
-    btn.dataset.recording="1"; btn.textContent="⏹ Stop & save";
+    btn.dataset.recording="1"; btn.textContent="■ Stop & save";
     btn._stop=()=>{ clearInterval(tick); try{ rec.stop(); }catch(_){}};
     rec.onstop=async()=>{
       stream.getTracks().forEach(t=>t.stop()); btn.dataset.recording=""; btn.disabled=true; btn.textContent="Saving…";
@@ -2606,7 +2624,7 @@ const App = (() => {
         const r=await fetch("/api/enroll?name="+encodeURIComponent(name),{method:"POST",headers: token?{"Authorization":"Bearer "+token}:{}, body:fd});
         if(!r.ok) throw new Error((await r.text())||"failed");
         toast("Voice enrolled"); showSettings();
-      }catch(e){ btn.disabled=false; btn.dataset.recording=""; btn.textContent="🎙 Record my voice";
+      }catch(e){ btn.disabled=false; btn.dataset.recording=""; btn.textContent="● Record my voice";
         let m=String(e.message||"Failed"); try{ const j=JSON.parse(m); if(j.detail) m=j.detail; }catch(_){ }
         if(msg) msg.textContent=m; }
     };
@@ -2755,7 +2773,7 @@ const App = (() => {
     paintDone(); bindJournal();
   }
   function journalActionHTML(t,r){ const kind=actKind(t);
-    const ic=kind==="calendar"?"&#128197;":kind==="email"?"&#9993;":"&#10003;";
+    const ic=kind==="calendar"?"◷":kind==="email"?"@":"✓";
     const label=kind==="calendar"?"Add to calendar":kind==="email"?"Draft &amp; send":"Mark done";
     let sub="";
     if(kind==="calendar"){ const w=suggestTime(t.due); sub="Suggested: "+w.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})+", "+w.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}); }
@@ -2815,7 +2833,7 @@ const App = (() => {
 
   function authOrError(e,retry){
     if (String(e.message)==="auth"){ return showLogin(retry); }
-    app.innerHTML=`<div class="view"><div class="empty">⚠ ${h(e.message)}<br><br>
+    app.innerHTML=`<div class="view"><div class="empty">△ ${h(e.message)}<br><br>
       <button class="btn" id="rt">Retry</button></div></div>`; document.getElementById("rt").onclick=retry;
   }
 
@@ -2858,7 +2876,7 @@ const App = (() => {
   }
   function passwordLogin(retry,finish){
     app.innerHTML=`<div class="login"><div class="login-card">
-      <div class="lock">🔒</div><h2>Welcome back</h2>
+      <div class="lock">✦</div><h2>Welcome back</h2>
       <p>Enter your Lucid password to open your notes.</p>
       <div class="login-err" id="lerr" role="alert" aria-live="assertive"></div>
       <input id="lpw" type="password" placeholder="Password" autocomplete="current-password" aria-label="Lucid password" />
