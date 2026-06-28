@@ -2652,3 +2652,98 @@ main:has(.view--wide){max-width:var(--maxw-wide);}        /* 720 → 1080 */
 @media (min-width:1500px){
   .crm-board .feed, .people-board .feed, .projects-view .feed{ grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
+
+/* ════════════════════════════════════════════════════════════
+   CRISP PASS — kill the muddiness. Solid cards that pop off the bg,
+   sharp borders, brighter text, minimal blur, calmer backdrop.
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --bg:oklch(0.175 0.055 268);
+  --surface:oklch(0.255 0.038 264);          /* SOLID, clearly lighter — crisp cards */
+  --surface-hi:oklch(0.305 0.042 262);
+  --surface-sunk:oklch(0.205 0.045 268);
+  --line:oklch(0.55 0.03 255 / 0.55);        /* visible hairlines */
+  --line-strong:oklch(0.66 0.035 255 / 0.75);
+  --glass-border:var(--line); --glass-border-strong:var(--line-strong);
+  --glass-fill:var(--surface); --glass-fill-strong:var(--surface-hi); --glass-fill-deep:oklch(0.205 0.05 268 / 0.92);
+  --ink:oklch(0.97 0.008 250); --ink-2:oklch(0.86 0.014 247); --ink-3:oklch(0.74 0.018 245); --ink-4:oklch(0.62 0.02 245);
+  --muted:var(--ink-3); --faint:var(--ink-4); --ink-soft:var(--ink-2);
+  --glass-blur:8px; --glass-blur-strong:12px; --glass-blur-soft:6px; --glass-sat:140%;
+  --shadow-xs:0 1px 2px oklch(0.06 0.04 272/0.5);
+  --shadow-sm:0 1px 2px oklch(0.06 0.04 272/0.5), 0 4px 14px oklch(0.05 0.03 272/0.45);
+  --shadow-pop:0 10px 26px oklch(0.04 0.03 272/0.6), 0 24px 60px oklch(0.03 0.02 272/0.6);
+  --glass-lip:inset 0 1px 0 oklch(1 0 0/0.06); --glass-lip-soft:inset 0 1px 0 oklch(1 0 0/0.05);
+}
+/* calmer backdrop so cards read crisp, not murky */
+body::before{ opacity:.5; }
+/* hero panel: clear, brighter step (less reliant on glow) */
+.panel--hero,.brief .deck>.sp-7{ background:var(--surface-hi); border-color:var(--accent-line); box-shadow:var(--shadow-sm); }
+
+/* ════════════════════════════════════════════════════════════
+   FLAT MINIMAL — no glass, no blur, no glow. Solid surfaces, crisp
+   borders, strong type, generous whitespace. (Midnight palette.)
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --bg:oklch(0.155 0.04 266);
+  --surface:oklch(0.215 0.038 265);
+  --surface-hi:oklch(0.262 0.04 263);
+  --surface-sunk:oklch(0.135 0.038 268);
+  --line:oklch(0.33 0.025 262);
+  --line-strong:oklch(0.44 0.03 260);
+  --glass-border:var(--line); --glass-border-strong:var(--line-strong);
+  --glass-fill:var(--surface); --glass-fill-strong:var(--surface-hi); --glass-fill-deep:var(--bg);
+  --ink:oklch(0.975 0.005 250); --ink-2:oklch(0.83 0.012 247); --ink-3:oklch(0.65 0.016 245); --ink-4:oklch(0.54 0.018 245);
+  --muted:var(--ink-3); --faint:var(--ink-4); --ink-soft:var(--ink-2);
+  --glass-blur:0px; --glass-blur-strong:0px; --glass-blur-soft:0px; --glass-sat:100%;
+  --glass-lip:none; --glass-lip-soft:none; --glass-sheen:none;
+  --shadow-none:none; --shadow-xs:none; --shadow-sm:none; --shadow-pop:0 12px 34px oklch(0.03 0.02 270/0.6);
+  --sh:none; --sh-soft:none; --sh-card:none;
+  --glow-accent:none; --glow-accent-soft:none;
+  --accent-quiet:oklch(0.6 0.12 250 / 0.16); --accent-line:oklch(0.6 0.12 250 / 0.5);
+  --radius-xs:6px; --radius-sm:8px; --radius-md:9px; --radius-lg:11px;
+}
+body{ background:var(--bg); }
+body::before{ display:none !important; }
+/* kill every blur + glass artifact */
+.appbar,.lucidbar,.searchhead,.tabbar,.sheet,.chatsheet,.namecard,.fab,.toast,.selbar,.login-card,
+.panel,.rcard,.pcard,.vcard,.dircard,.crmcard,.notecard,.idea-card,.projcard,.statcard,.owerow,
+.revrow,.evpill,.reviewcta,.rvqueue,.welcome-card,.sharebox,.linkrow,.jentry,.jcard,.glass-panel,
+.glass-floating,.glass-backdrop,.iconbtn,.btn,.cta,.qcta,.fchip,.seg-lucid,.seg-lucid button,.spkchip,
+.field input,.field select,.searchwrap input,.login-card input,.nameinput,.chatinput input,.ctxmenu,
+.brand .rx,.secsearch,.cmsg.ai,.sk,.sortsel select{
+  -webkit-backdrop-filter:none !important; backdrop-filter:none !important; }
+.glass-floating::before,.glass-sheen::before,.namecard::before,.toast::before{ display:none !important; }
+/* solid flat surfaces — clean border, no shadow/lip/glow */
+.panel,.rcard,.pcard,.vcard,.dircard,.crmcard,.notecard,.idea-card,.projcard,.statcard,.jentry,
+.reviewcta,.welcome-card,.sharebox,.owerow,.evpill,.tcard{ background:var(--surface); box-shadow:none; border:1px solid var(--line); }
+.panel--hero,.brief .deck>.sp-7{ background:var(--surface-hi); border-color:var(--accent-line); box-shadow:none; }
+.jcard,.qcard,.sq{ background:var(--surface-hi); box-shadow:none; border-color:var(--line); }
+.appbar,.lucidbar,.searchhead{ background:var(--bg); }
+.tabbar,.sheet,.chatsheet,.namecard,.selbar,.login-card,.toast,.fab,.ctxmenu{ background:var(--surface-hi); box-shadow:var(--shadow-pop); }
+/* flat accent (no glow) */
+.btn.primary,.cta.solid,.qcta.solid,.csend,.cta.solid.ok,.rv-dismiss.done,.qread.done{ box-shadow:none; }
+.tabbar button.active{ box-shadow:none; background:var(--accent-quiet); }
+.fchip.on,.statcard.on,.seg-lucid button.on,.iconbtn.on,.iconbtn.pill.on,.owerow:hover,.mast-refresh:hover{ box-shadow:none; }
+.brand .rx{ background:var(--accent-quiet); box-shadow:none; }
+.fab{ box-shadow:var(--shadow-pop); }
+.playing{ box-shadow:none; outline:2px solid var(--accent); }
+.login-card input[inputmode="numeric"]:focus,.field input:focus,.searchwrap input:focus,.login-card input:focus{ box-shadow:0 0 0 2px var(--accent-quiet); }
+/* a touch more air */
+.view{ --pad-panel:22px; }
+.panel{ padding:22px; }
+
+/* Flat minimal — LIGHT variant: clean white, solid cards, dark ink, no glass */
+[data-theme="light"]{
+  --bg:oklch(0.975 0.004 250);
+  --surface:oklch(1 0 0); --surface-hi:oklch(1 0 0); --surface-sunk:oklch(0.955 0.006 250);
+  --line:oklch(0.9 0.008 255); --line-strong:oklch(0.82 0.014 255);
+  --glass-border:var(--line); --glass-border-strong:var(--line-strong);
+  --glass-fill:var(--surface); --glass-fill-strong:var(--surface-hi); --glass-fill-deep:var(--bg);
+  --ink:oklch(0.24 0.02 265); --ink-2:oklch(0.42 0.02 262); --ink-3:oklch(0.53 0.02 255); --ink-4:oklch(0.64 0.018 250);
+  --muted:var(--ink-3); --faint:var(--ink-4); --ink-soft:var(--ink-2);
+  --accent:oklch(0.54 0.16 256); --accent-hover:oklch(0.49 0.17 257); --accent-ink:oklch(0.47 0.16 258);
+  --accent-quiet:oklch(0.6 0.14 255 / 0.12); --accent-line:oklch(0.54 0.16 256 / 0.38); --on-accent:oklch(0.99 0.01 250);
+  --shadow-pop:0 12px 34px oklch(0.5 0.05 262/0.16);
+}
+[data-theme="light"] .appbar,[data-theme="light"] .lucidbar,[data-theme="light"] .searchhead{ background:var(--bg); }
+[data-theme="light"] body::before{ display:none !important; }
