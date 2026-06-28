@@ -380,8 +380,8 @@ const App = (() => {
         <div class="dup-acts"><button class="cta solid" data-merge="1">Merge</button>
           <button class="cta line" data-notdup="1">Not a duplicate</button></div></div>`; }).join("")}</div>`:"";
 
-    app.innerHTML=`<div class="view crm-board">
-      <div class="hero">
+    app.innerHTML=`<div class="view view--wide crm-board">
+      <div class="hero hero--wide">
         <div class="dateline">${datelineStr()}${d.age_min!=null||d.can_refresh?`<span class="freshsep">·</span><span class="fresh">${h(agoLabel(d.age_min))}</span>${d.can_refresh?`<button class="rfbtn${d.refreshing?" spin":""}" id="crmRefresh" title="Refresh roster" aria-label="Refresh roster">↻</button>`:""}`:""}</div>
         <h1>CRM <span class="count">${all.length} contacts</span></h1>
         <div class="ednote">Your book of business, fresh this morning — ${bits.join(" · ")}.</div>
@@ -1357,7 +1357,7 @@ const App = (() => {
 
   async function showPeople(){
     peopleMode="rel";
-    app.innerHTML=`<div class="view people-board">${masthead({title:"People"})}${peopleSeg()}
+    app.innerHTML=`<div class="view view--wide people-board">${masthead({title:"People",wide:true})}${peopleSeg()}
       ${statSkel(5)}${skeletons(3)}</div>`;
     bindSeg();
     let ppl; try { ppl=await api("/api/people"); } catch(e){ return authOrError(e,showPeople); }
@@ -1366,7 +1366,7 @@ const App = (() => {
 
   async function showDirectory(){
     peopleMode="dir"; selMode=false; sel.clear();
-    app.innerHTML=`<div class="view people-board">${masthead({title:"People"})}${peopleSeg()}
+    app.innerHTML=`<div class="view view--wide people-board">${masthead({title:"People",wide:true})}${peopleSeg()}
       ${statSkel(4,'stats-static')}${skeletons(3)}</div>`;
     bindSeg();
     let dir; try { dir=await api("/api/directory"); } catch(e){ return authOrError(e,showDirectory); }
@@ -1418,8 +1418,8 @@ const App = (() => {
         </div>`;
       }).join("")}</div>`;
     }
-    app.innerHTML=`<div class="view people-board">
-      ${masthead({title:`People <span class="count">${dir.length} learned</span>`, note:ed})}
+    app.innerHTML=`<div class="view view--wide people-board">
+      ${masthead({title:`People <span class="count">${dir.length} learned</span>`, note:ed, wide:true})}
       ${peopleSeg()}
       <div class="figrow stats-static">${ribbon}</div>
       ${body}</div>`;
@@ -1463,8 +1463,8 @@ const App = (() => {
 
     if(!ppl.length){
       setSubline("relationships");
-      app.innerHTML=`<div class="view people-board">
-        ${masthead({title:"People", note:"Your relationships, gathered from every conversation."})}
+      app.innerHTML=`<div class="view view--wide people-board">
+        ${masthead({title:"People", note:"Your relationships, gathered from every conversation.", wide:true})}
         ${peopleSeg()}
         <div class="empty"><div class="big">&#9737;</div>No people yet.
           <div class="hint">As you record conversations, the people in them — and how
@@ -1519,8 +1519,8 @@ const App = (() => {
         <div class="feed">${list.map(pcardHTML).join("")}</div></div>`;
     }).join("");
 
-    app.innerHTML=`<div class="view people-board">
-      ${masthead({title:`People <span class="count">${ppl.length}</span>`, note:ed})}
+    app.innerHTML=`<div class="view view--wide people-board">
+      ${masthead({title:`People <span class="count">${ppl.length}</span>`, note:ed, wide:true})}
       ${peopleSeg()}
       <div class="figrow">${ribbon}</div>
       ${nudgeHTML}
@@ -1923,25 +1923,25 @@ const App = (() => {
     audioURL = URL.createObjectURL(blob); audioURLId = id; return audioURL;
   }
   async function showDetail(id){
-    app.innerHTML=`<div class="view"><span class="backlink" onclick="App.back('/lucid/notes')">← Notes</span>${skeletons(1)}
+    app.innerHTML=`<div class="view view--wide"><span class="backlink" onclick="App.back('/lucid/notes')">← Notes</span>${skeletons(1)}
       <div style="height:12px"></div>${skeletons(2)}</div>`;
     let rec; try { rec=await api("/api/recordings/"+id); } catch(e){ return authOrError(e,()=>showDetail(id)); }
     current=rec; activeTab="overview"; showOriginal=false; chatHist=[];
 
     if (!["done","error"].includes(rec.status)){
-      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.back('/lucid/notes')">← Notes</span>
+      app.innerHTML=`<div class="view view--wide"><span class="backlink" onclick="App.back('/lucid/notes')">← Notes</span>
         <div class="empty"><span class="spin-lg"></span>${h(rec.status)}…
         <div class="hint">transcribe → translate → analyze</div></div></div>`;
       pollTimer=setTimeout(()=>showDetail(id),3500); return;
     }
     if (rec.status==="error"){
-      app.innerHTML=`<div class="view"><span class="backlink" onclick="App.back('/lucid/notes')">← Notes</span>
+      app.innerHTML=`<div class="view view--wide"><span class="backlink" onclick="App.back('/lucid/notes')">← Notes</span>
         <div class="panel"><h2>Error</h2><p style="color:var(--ten);white-space:pre-wrap;font-size:13px">${h(rec.error)}</p>
         <button class="btn" onclick="App.reanalyze('${id}')">Retry</button></div></div>`; return;
     }
 
     const a=rec.analysis||{}; const m=mood(a);
-    app.innerHTML=`<div class="view" style="--mc:${m.c}">
+    app.innerHTML=`<div class="view detail note-detail view--wide" style="--mc:${m.c}">
       <span class="backlink" onclick="App.back('/lucid/notes')">← Notes</span>
       <div class="dhero">${ringHTML(m.c,72)}
         <div><h1>${h(a.headline||"Recording")}</h1>
@@ -2422,7 +2422,7 @@ const App = (() => {
   // ===== SETTINGS =====
   async function showSettings(){
     setSubline("Settings");
-    app.innerHTML=`<div class="view">${masthead({title:"Settings"})}${skeletons(2)}</div>`;
+    app.innerHTML=`<div class="view view--wide settings panel-grid">${masthead({title:"Settings"})}${skeletons(2)}</div>`;
     let st={}, sys={systems:[]}, crm={}, cal={}, dk={}, vp={enrolled:[]};
     try { st=await api("/api/settings"); } catch(e){ return authOrError(e,showSettings); }
     try { sys=await api("/api/systems"); } catch(e){}
@@ -2502,7 +2502,7 @@ const App = (() => {
         : `<div class="btnrow"><button class="btn" id="apiGen">Generate API key</button></div>`}
       </div>`;
 
-    app.innerHTML=`<div class="view">
+    app.innerHTML=`<div class="view view--wide settings panel-grid">
       ${masthead({title:"Settings"})}
       ${share}
       <div class="panel"><h2>System status</h2>${sysHTML||'<p class="muted" style="font-size:14px">—</p>'}</div>
@@ -3021,8 +3021,8 @@ const App = (() => {
         <div class="rbody"><h3>${h(p.name)}</h3>
           <div class="rmeta"><span class="chip">${h(meta)}</span><span class="time">${h(rel(p.updated_at||p.created_at))}</span></div>
         </div></div>`; }).join("");
-    app.innerHTML=`<div class="view projects-view">
-      ${masthead({title:`Projects <span class="count">${list.length}</span>`, note:ed})}
+    app.innerHTML=`<div class="view view--wide projects-view">
+      ${masthead({title:`Projects <span class="count">${list.length}</span>`, note:ed, wide:true})}
       <div class="ptools"><button class="btn" id="newProj">+ New project</button></div>
       ${list.length?`<div class="feed">${cards}</div>`:`<div class="empty"><div class="big">&#9638;</div>No projects yet.
         <div class="hint">Create one, then add notes, people or ideas to it from any card's menu (right-click or long-press), or with Select.</div></div>`}</div>`;
