@@ -846,7 +846,7 @@ const App = (() => {
 
     const empty=(t)=>`<div class="mt2" style="padding:8px 0">${t}</div>`;
     const latest=done.slice(0,3).map(r=>{ const m=mood(r);
-      return `<div class="minirow" style="--domain:${m.c}" ${actAttr(()=>go("/r/"+r.id))}>
+      return `<div class="minirow" data-ctx="note:${h(r.id)}" style="--domain:${m.c}" ${actAttr(()=>go("/r/"+r.id))}>
         <span class="spinedot"></span><div class="mtxt">
           <div class="mt1">${h(r.headline||"Untitled")}</div>
           <div class="mt2">${h(r.summary||m.w)}</div></div>
@@ -854,12 +854,12 @@ const App = (() => {
 
     const nurture=[...b.ppl].sort((a,c)=>{ const ac=a.trend==="cooling"?0:1, cc=c.trend==="cooling"?0:1;
         return ac!==cc?ac-cc:new Date(a.last_seen||0)-new Date(c.last_seen||0); })
-      .slice(0,3).map(p=>`<div class="minirow" style="--domain:var(--${toneClass(p.tone)})" ${actAttr(()=>go("/people/"+encodeURIComponent(p.key)))}>
+      .slice(0,3).map(p=>`<div class="minirow" data-ctx="person:${h(p.key)}" style="--domain:var(--${toneClass(p.tone)})" ${actAttr(()=>go("/people/"+encodeURIComponent(p.key)))}>
         <span class="spinedot"></span><div class="mtxt"><div class="mt1">${h(p.name)}</div>
         <div class="mt2">${trendWord(p.trend)} · ${p.interactions} talk${p.interactions>1?"s":""}</div></div>
         <span class="mtime">${h(rel(p.last_seen))}</span></div>`).join("")||empty("No people yet.");
 
-    const ideas=b.vens.slice(0,3).map(v=>`<div class="minirow" style="--domain:var(--topic)" ${actAttr(()=>go("/ventures/"+encodeURIComponent(v.id)))}>
+    const ideas=b.vens.slice(0,3).map(v=>`<div class="minirow" data-ctx="idea:${h(v.id)}" style="--domain:var(--topic)" ${actAttr(()=>go("/ventures/"+encodeURIComponent(v.id)))}>
         <span class="spinedot"></span><div class="mtxt"><div class="mt1">${h(v.title)}</div>
         <div class="mt2">${v.has_spec?"Plan ready":"No plan yet"}${v.status?(" · "+h(v.status)):""}</div></div>
         ${v.has_spec?`<span class="mtime">✓</span>`:""}</div>`).join("")||empty("No ideas yet.");
@@ -2757,7 +2757,7 @@ const App = (() => {
     const sections=Object.keys(days).sort((a,b)=>new Date(b)-new Date(a)).map(d=>{
       const entries=days[d].map(r=>{ const acts=byNote[r.id]||[]; const m=mood(r);
         const ppl=(r.people||[]).slice(0,3).map(p=>`<span class="chip">${h(typeof p==="string"?p:(p&&(p.name||p.label))||"")}</span>`).join("");
-        return `<div class="jentry" style="--mc:${m.c}">
+        return `<div class="jentry" data-id="${h(r.id)}" style="--mc:${m.c}">
           <div class="jhead" ${jAttr(()=>go("/r/"+r.id))}>
             <div class="jtitle">${h(r.headline||"Conversation")}</div>
             ${r.summary?`<div class="jsub">${h(r.summary)}</div>`:""}
@@ -2928,9 +2928,37 @@ const App = (() => {
       const it=items[+b.dataset.ci]; closeContextMenu(); try{ it&&it.run&&it.run(); }catch(_){} });
     requestAnimationFrame(()=>m.classList.add("open"));
   }
-  const CTX_SEL=".rcard,.pcard,.idea-card,.crmcard";
+  const CTX_SEL=".rcard,.pcard,.idea-card,.crmcard,.jentry,.rvitem,.projcard,.minirow[data-ctx]";
+  // shared action sets so right-click works on every surface that references an entity
+  function ctxItemsForEntity(type, ref){
+    if(!ref) return [];
+    if(type==="note") return [ {label:"✦ Ask Lucid", run:()=>go("/r/"+ref)},
+      {label:"Add to project…", run:()=>openProjectPicker([{type:"note",ref}])},
+      {sep:true}, {label:"Delete note", danger:true, run:()=>del(ref)} ];
+    if(type==="person") return [ {label:"Open", run:()=>go("/people/"+encodeURIComponent(ref))},
+      {label:"Add to project…", run:()=>openProjectPicker([{type:"person",ref}])},
+      {sep:true}, {label:"Forget", danger:true, run:()=>{ if(confirm("Forget everything learned about this person? (their recordings stay)")) forgetPerson(ref); }} ];
+    if(type==="idea") return [ {label:"Open", run:()=>go("/ventures/"+encodeURIComponent(ref))},
+      {label:"Add to project…", run:()=>openProjectPicker([{type:"idea",ref}])},
+      {sep:true}, {label:"Delete idea", danger:true, run:()=>{ if(confirm("Delete this idea? This can't be undone.")) deleteIdea(ref); }} ];
+    if(type==="contact") return [ {label:"Open", run:()=>go("/crm/"+encodeURIComponent(ref))},
+      {sep:true}, {label:"Remove from CRM", danger:true, run:()=>crmOverride(ref,"remove")} ];
+    return [];
+  }
   function ctxItemsForCard(card){
     if(!card) return [];
+    if(card.dataset.ctx){ const i=card.dataset.ctx.indexOf(":");
+      return ctxItemsForEntity(card.dataset.ctx.slice(0,i), card.dataset.ctx.slice(i+1)); }
+    if(card.classList.contains("jentry")) return ctxItemsForEntity("note", card.dataset.id);
+    if(card.classList.contains("projcard")){ const pid=card.dataset.pid;
+      return [ {label:"Open", run:()=>showProject(pid)},
+        {sep:true}, {label:"Delete project", danger:true, run:()=>{ if(confirm("Delete this project? (the notes/people/ideas inside are not deleted)")){
+          api("/api/projects/"+encodeURIComponent(pid),{method:"DELETE"}).then(()=>{ _projects=null; toast("Project deleted"); showProjects(); }).catch(()=>toast("Couldn't delete")); } }} ]; }
+    if(card.classList.contains("rvitem")){ const it=_rvItems[+card.dataset.i]; if(!it) return [];
+      const out=[]; if(it.open) out.push({label:"Open", run:()=>it.open()});
+      (it.actions||[]).forEach(a=>{ if(a&&a.label&&a.run){ const lbl=a.label.replace(/\s*[→✓✎@◷□]\s*/g,"").trim()||a.label;
+        out.push({label:lbl, danger:a.x, run:()=>a.run()}); } });
+      return out; }
     if(card.classList.contains("notecard")){ const id=card.dataset.id;
       return [ {label:"✦ Ask Lucid", run:()=>go("/r/"+id)},
         {label:"Add to project…", run:()=>openProjectPicker([{type:"note",ref:id}])},
