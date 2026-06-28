@@ -2063,3 +2063,91 @@ body::before{
   box-shadow:var(--glass-lip), var(--shadow-sm); margin:6px 0 2px; }
 .brief .minirow{ padding:11px 0; } .brief .minirow:last-child{ padding-bottom:2px; }
 .brief .seeall{ display:inline-block; margin-top:12px; color:var(--accent-ink); font-weight:var(--w-med); }
+
+/* ============================================================
+   FEATURES #14–#19 — Liquid Glass additions
+   (appended last so source order wins over earlier rules)
+   ============================================================ */
+
+/* ---- #16 in-section live search ---- */
+.secsearch{ position:relative; display:flex; align-items:center; gap:9px;
+  margin:0 2px 16px; padding:0 15px; height:44px; border-radius:var(--radius-pill);
+  background:var(--surface-sunk); border:1px solid var(--glass-border);
+  -webkit-backdrop-filter:saturate(165%) blur(16px); backdrop-filter:saturate(165%) blur(16px);
+  box-shadow:inset 0 1px 2px oklch(0.04 0.05 272/0.30); }
+.secsearch:focus-within{ border-color:var(--accent-line); box-shadow:var(--glow-accent-soft); }
+.secsearch .mag{ flex:none; color:var(--ink-3); font-size:16px; }
+.secsearch input{ flex:1; min-width:0; height:100%; background:none; border:0; outline:0;
+  color:var(--ink); font:inherit; font-size:14.5px; }
+.secsearch input::placeholder{ color:var(--ink-4); }
+.secrow{ margin-bottom:12px; }
+
+/* ---- #19 context menu ---- */
+.ctxmenu{ position:fixed; z-index:120; min-width:212px; max-width:78vw; padding:6px;
+  background:var(--surface-hi); border:1px solid var(--glass-border-strong); border-radius:var(--radius-md);
+  -webkit-backdrop-filter:saturate(180%) blur(30px); backdrop-filter:saturate(180%) blur(30px);
+  box-shadow:var(--glass-lip), var(--shadow-pop);
+  opacity:0; transform:scale(.96) translateY(-4px); transform-origin:top left;
+  transition:opacity .12s var(--ease), transform .12s var(--ease); }
+.ctxmenu.open{ opacity:1; transform:none; }
+.ctxitem{ display:flex; align-items:center; width:100%; gap:10px; text-align:left;
+  padding:10px 12px; border-radius:var(--radius-sm); font-size:14px; font-weight:550;
+  color:var(--ink); background:none; transition:background .12s var(--ease), color .12s var(--ease); }
+.ctxitem:hover{ background:var(--accent-quiet); color:var(--accent-ink); }
+.ctxitem.danger{ color:var(--critical-ink); }
+.ctxitem.danger:hover{ background:color-mix(in oklch, var(--critical) 16%, transparent); color:var(--critical-ink); }
+.ctxsep{ height:1px; margin:5px 8px; background:var(--glass-border); }
+
+/* ---- #17 multi-select checkbox (notes + ideas, mirrors People) ---- */
+.rcard.selmode{ padding-left:14px; }
+.selcheck{ flex:none; width:22px; height:22px; align-self:center; border-radius:7px;
+  display:grid; place-items:center; font-size:13px; font-weight:700;
+  color:var(--accent); background:var(--surface-hi); border:1.5px solid var(--glass-border-strong); }
+.selcheck.on{ background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+.rcard.picked{ border-color:var(--accent); box-shadow:0 0 0 1.5px var(--accent) inset, var(--shadow-xs); }
+.rcard.picked .selcheck{ background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+
+/* ---- #17 projects: cards, rows, detail, picker ---- */
+.projects-view .detail-top,.detail-top{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.projcard .tile.mono span{ color:var(--accent-ink); font-size:1.05rem; }
+.projlist{ display:flex; flex-direction:column; gap:10px; }
+.projrow{ display:flex; align-items:center; gap:12px; padding:13px 15px;
+  background:var(--surface); border:1px solid var(--glass-border); border-left:3px solid var(--accent);
+  border-radius:var(--radius-md); box-shadow:var(--shadow-xs); transition:transform .14s var(--ease), box-shadow .14s var(--ease); }
+.projrow:hover{ transform:translateY(-1px); box-shadow:var(--shadow-sm); }
+.projrow .pr-main{ flex:1; min-width:0; cursor:pointer; }
+.projrow .pr-t{ font-weight:var(--w-semi); font-size:15px; color:var(--ink); letter-spacing:-.01em;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.projrow .pr-s{ font-size:13px; color:var(--ink-2); line-height:1.4; margin-top:2px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.projrow .pr-x{ flex:none; width:32px; height:32px; border-radius:50%; font-size:14px; color:var(--ink-3);
+  border:1px solid var(--glass-border); background:var(--surface-hi); transition:.14s var(--ease); }
+.projrow .pr-x:hover{ color:var(--critical-ink); border-color:var(--critical);
+  background:color-mix(in oklch, var(--critical) 12%, transparent); }
+.projpick .projpick-list{ display:flex; flex-direction:column; gap:8px; }
+.projpick-row{ display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  padding:13px 15px; border-radius:var(--radius-md); background:var(--surface);
+  border:1px solid var(--glass-border); transition:.14s var(--ease); }
+.projpick-row:hover{ border-color:var(--accent-line); background:var(--surface-hi); box-shadow:var(--glow-accent-soft); }
+.projpick-row .pp-name{ flex:1; min-width:0; font-weight:var(--w-semi); font-size:15px; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.projpick-row .pp-n{ flex:none; font-size:12px; font-weight:700; color:var(--ink-3);
+  background:var(--surface-sunk); border-radius:999px; padding:2px 10px; }
+
+/* ---- #14 duplicate-merge panel ---- */
+.duppanel .duprow{ display:flex; align-items:center; gap:12px; padding:12px 0;
+  border-top:1px solid var(--glass-border); }
+.duppanel .duprow:first-of-type{ border-top:none; }
+.duppanel .dup-l{ flex:1; min-width:0; }
+.duppanel .dup-name{ font-weight:var(--w-semi); font-size:15px; color:var(--ink); letter-spacing:-.01em; }
+.duppanel .dup-why{ font-size:13px; color:var(--ink-2); line-height:1.4; margin-top:2px; }
+.duppanel .dup-acts{ flex:none; display:flex; gap:8px; }
+@media (max-width:480px){
+  .duppanel .duprow{ flex-wrap:wrap; }
+  .duppanel .dup-l{ flex:1 1 100%; }
+  .duppanel .dup-acts{ margin-left:auto; }
+}
+
+/* ---- #17 keep the 4-segment Lucid hub bar readable on small phones ---- */
+@media (max-width:520px){ .seg-lucid button{ padding:9px 6px; gap:5px; } }
+@media (max-width:420px){ .seg-lucid button .seg-ic{ display:none; } .seg-lucid button{ font-size:13px; } }

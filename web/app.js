@@ -37,6 +37,10 @@ const App = (() => {
     return _BIZ_RE.test(s) && !_PERSONAL_RE.test(s); };
   const keepRec=(r)=> !workOnly || recWork(r);
   const keepAi=(t)=> !workOnly || aiWork(t);
+  // #18 — bucket every note: Work (business), Mental (personal/therapy/relationship) or Other.
+  const noteCategory=(r)=>{ if(recWork(r)) return "work";
+    const s=((r&&r.headline)||"")+" "+((r&&r.summary)||"");
+    return _PERSONAL_RE.test(s) ? "mental" : "other"; };
   function bindWorkBtn(){
     const b=document.getElementById("workBtn"); if(!b) return;
     b.textContent = workOnly ? "Work" : "All";
@@ -129,7 +133,10 @@ const App = (() => {
 
   // routing
   let cache=[], pollTimer=null, __navPaint=true, _pendingScrollY=null, _scrollTarget=null;
-  let homeFilter="all", homeSort="newest";
+  let homeFilter="all", homeSort="newest", noteCat="all";    // #18 category filter
+  let secSearch={notes:"",people:"",ideas:"",crm:""};         // #16 per-section live filter terms
+  let hubSel={mode:false, type:null, ids:new Set()};          // #17 hub multi-select
+  let _projects=null;                                         // #17 projects cache
   try{ history.scrollRestoration="manual"; }catch(_){}
   const clearPoll=()=>{ if(pollTimer){clearTimeout(pollTimer); pollTimer=null;} };
   const setTab=(n)=>{
@@ -193,8 +200,8 @@ const App = (() => {
     if(wasNav && _v){ _v.setAttribute('tabindex','-1'); _v.focus({preventScroll:true}); } }
 
   // ===== LUCID HUB — Notes · People · Ideas under one tab =====
-  const LUCID_SEGS=["notes","people","ideas"];
-  const SEG_RENDER={notes:showNotes, people:showPeople, ideas:showVentures};
+  const LUCID_SEGS=["notes","people","ideas","projects"];
+  const SEG_RENDER={notes:showNotes, people:showPeople, ideas:showVentures, projects:showProjects};
   let lucidSeg=(()=>{ const s=localStorage.getItem("lucid_seg"); return LUCID_SEGS.includes(s)?s:"notes"; })();
   const lucidbarEl=document.getElementById("lucidbar");
   function setLucidSeg(seg){
@@ -362,6 +369,17 @@ const App = (() => {
           <button class="rev-x" data-ov="remove" title="Dismiss">✕</button>
         </div></div>`).join("")}</div>`:"";
 
+    // #14 — possible duplicate contacts (high-confidence first), minus client-side dismissals
+    const _dismissed=dismissedDupes();
+    const dupes=(d.duplicates||[]).filter(x=>x&&x.duplicate_email&&!_dismissed.has(_dupKey(x)));
+    const dupHTML=dupes.length?`<div class="panel duppanel"><h2>Possible duplicates<span class="hcount">${dupes.length}</span></h2>
+      ${dupes.map(x=>{ const cf=x.confidence!=null?Math.round(x.confidence>1?x.confidence:x.confidence*100):null;
+        return `<div class="duprow" data-pk="${attr(_dupKey(x))}" data-primary="${attr(x.primary_email)}" data-dup="${attr(x.duplicate_email)}">
+        <div class="dup-l"><div class="dup-name">${h(x.name||x.duplicate_email)}</div>
+          <div class="dup-why">${h(x.reason||"Looks like the same person")}${cf!=null?` · ${cf}%`:""}</div></div>
+        <div class="dup-acts"><button class="cta solid" data-merge="1">Merge</button>
+          <button class="cta line" data-notdup="1">Not a duplicate</button></div></div>`; }).join("")}</div>`:"";
+
     app.innerHTML=`<div class="view crm-board">
       <div class="hero">
         <div class="dateline">${datelineStr()}${d.age_min!=null||d.can_refresh?`<span class="freshsep">·</span><span class="fresh">${h(agoLabel(d.age_min))}</span>${d.can_refresh?`<button class="rfbtn${d.refreshing?" spin":""}" id="crmRefresh" title="Refresh roster" aria-label="Refresh roster">↻</button>`:""}`:""}</div>
@@ -369,11 +387,24 @@ const App = (() => {
         <div class="ednote">Your book of business, fresh this morning — ${bits.join(" · ")}.</div>
       </div>
       <div class="figrow">${ribbon}</div>
+      ${dupHTML}
       ${oweHTML}
       <div class="filterbar">${chips}</div>
+      ${secSearchHTML("crm","Search contacts…")}
       ${sections||`<div class="empty"><div class="big">◌</div>Nothing in this view.</div>`}
       ${revHTML}</div>`;
     paintDone();
+    bindSecSearch(app,".crmcard");
+    app.querySelectorAll(".duprow [data-merge]").forEach(b=>b.onclick=async(e)=>{
+      e.stopPropagation(); const row=b.closest(".duprow"); if(row.dataset.busy) return; row.dataset.busy="1"; b.disabled=true;
+      try{ await api("/api/crm/board/merge",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({primary:row.dataset.primary, duplicate:row.dataset.dup})}); }
+      catch(err){ row.dataset.busy=""; b.disabled=false; toast("Couldn't merge — try again"); return; }
+      toast("Merged ✓"); haptic();
+      if(crmData&&crmData.duplicates) crmData.duplicates=crmData.duplicates.filter(x=>_dupKey(x)!==row.dataset.pk);
+      row.remove(); });
+    app.querySelectorAll(".duprow [data-notdup]").forEach(b=>b.onclick=(e)=>{
+      e.stopPropagation(); const row=b.closest(".duprow"); dismissDupe(row.dataset.pk); row.remove(); });
 
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
     const rf=document.getElementById("crmRefresh"); if(rf) rf.onclick=()=>crmRefresh(true);
@@ -530,7 +561,7 @@ const App = (() => {
     const ppl=seen.size;
 
     const ft=FILTERS.find(f=>f.k===homeFilter)||FILTERS[0];
-    let list=recs.filter(ft.test).filter(keepRec);
+    let list=recs.filter(ft.test).filter(keepRec).filter(r=> noteCat==="all" || noteCategory(r)===noteCat);
     if (homeSort==="oldest") list=[...list].reverse();
     else if (homeSort==="longest") list=[...list].sort((a,b)=>(b.duration||0)-(a.duration||0));
 
@@ -581,17 +612,26 @@ const App = (() => {
         <option value="oldest"${homeSort==="oldest"?" selected":""}>Oldest</option>
         <option value="longest"${homeSort==="longest"?" selected":""}>Longest</option>
       </select></span></div>`:"";
+    // #18 — Work / Mental / Other category chips
+    const CATS=[{k:"all",l:"All"},{k:"work",l:"Work"},{k:"mental",l:"Mental"},{k:"other",l:"Other"}];
+    const catbar=recs.length?`<div class="filterbar catbar">
+      ${CATS.map(c=>`<button class="fchip${noteCat===c.k?" on":""}" data-cat="${c.k}">${c.l}</button>`).join("")}</div>`:"";
+    const tools=recs.length?`<div class="ptools secrow"><button class="btn ghost" id="noteSelBtn">${hubSel.mode&&hubSel.type==="note"?"Done":"Select"}</button></div>`:"";
+    const search=recs.length?secSearchHTML("notes","Search notes…"):"";
 
     app.innerHTML=`<div class="view notes-feed">
       ${masthead({title:`Notes <span class="count">${done.length} sorted</span>`, note:ed})}
       ${recs.length?`<div class="figrow">${ribbon}</div>`:""}
-      ${filterbar}${body}</div>`;
+      ${filterbar}${catbar}${tools}${search}${body}${hubSelBar()}</div>`;
     paintDone();
     bindCards();
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
     const ms=app.querySelector(".statcard[data-sort]");
     if(ms) ms.onclick=()=>{ homeSort = homeSort===ms.dataset.sort ? "newest" : ms.dataset.sort; paintNotes(); };
-    app.querySelectorAll(".filterbar .fchip").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
+    app.querySelectorAll(".filterbar:not(.catbar) .fchip").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
+    app.querySelectorAll(".catbar .fchip").forEach(b=>b.onclick=()=>{ noteCat=b.dataset.cat; paintNotes(); });
+    const nsb=document.getElementById("noteSelBtn"); if(nsb) nsb.onclick=()=>hubSelToggle("note");
+    bindHubSelBar("note"); bindSecSearch(app,".notecard");
     const ss=document.getElementById("sortSel"); if(ss) ss.onchange=()=>{ homeSort=ss.value; paintNotes(); };
     const sa=document.getElementById("showAllNotes");
     if(sa) sa.onclick=()=>{ workOnly=false; localStorage.setItem("lucid_all","1"); bindWorkBtn(); paintNotes(); };
@@ -604,8 +644,10 @@ const App = (() => {
     const topics=(r.topics||[]).slice(0,2).map(t=>`<span class="chip">${h(t)}</span>`).join("");
     const proc=["done","error"].includes(r.status)?"":`<span class="proc"><span class="spin"></span>${h(r.status)}…</span>`;
     const ppl=(r.people||[]).length;
-    return `<div class="rcard notecard${done?"":" pending"}" data-id="${r.id}" style="--mc:${m.c}">
-      <div class="tile ${m.k}"></div>
+    const selOn=hubSel.mode&&hubSel.type==="note", picked=selOn&&hubSel.ids.has(r.id);  // #17
+    const box=selOn?`<span class="selcheck${picked?" on":""}">${picked?"&#10003;":""}</span>`:"";
+    return `<div class="rcard notecard${done?"":" pending"}${selOn?" selmode":""}${picked?" picked":""}" data-id="${r.id}" style="--mc:${m.c}">
+      ${box}<div class="tile ${m.k}"></div>
       <div class="rbody"><h3>${h(title)}</h3>
         ${r.summary?`<div class="snip">${h(r.summary)}</div>`:""}
         <div class="rmeta">
@@ -618,7 +660,9 @@ const App = (() => {
         <button class="carddel" data-del="${r.id}" title="Delete note" aria-label="Delete note">&#215;</button></div>`;
   }
   const bindCards=()=>{
-    app.querySelectorAll(".rcard").forEach(c=>c.onclick=()=>go("/r/"+c.dataset.id));
+    app.querySelectorAll(".rcard").forEach(c=>c.onclick=()=>{
+      if(hubSel.mode&&hubSel.type==="note"){ toggleHubSel(c.dataset.id); return; }   // #17
+      go("/r/"+c.dataset.id); });
     app.querySelectorAll(".carddel").forEach(b=>b.onclick=(e)=>{ e.stopPropagation();
       slideOut(b.closest(".rcard"), ()=>del(b.dataset.del)); });
   };
@@ -1481,12 +1525,17 @@ const App = (() => {
       <div class="figrow">${ribbon}</div>
       ${nudgeHTML}
       ${tools}${sugHTML}
+      ${secSearchHTML("people","Search people…")}
       ${sections||`<div class="empty"><div class="big">&#9737;</div>Nothing in this view.</div>`}
       ${selMode&&sel.size?`<div class="selbar"><span>${sel.size} selected</span>
+        <button class="btn" id="peopleAddProj">Add to project</button>
         <button class="btn" id="combineBtn" ${sel.size<2?"disabled":""}>Combine</button>
         <button class="btn ghost" id="deleteBtn">Delete</button></div>`:""}</div>`;
     paintDone();
     bindSeg();
+    bindSecSearch(app,".pcard");
+    const pap=document.getElementById("peopleAddProj");
+    if(pap) pap.onclick=()=>openProjectPicker([...sel].map(ref=>({type:"person",ref})));
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{peopleFilter=b.dataset.f;renderPeople();});
     const scb=app.querySelector('.statcard[data-scroll]');
     if(scb) scb.onclick=()=>{const el=document.getElementById(scb.dataset.scroll); if(el) el.scrollIntoView({behavior:"smooth",block:"start"});};
@@ -1634,8 +1683,10 @@ const App = (() => {
   function ventureCard(v){
     const col=ventureColor(v);
     const ppl=(v.people||[]).slice(0,2).map(p=>`<span class="chip">${h(p)}</span>`).join("");
-    return `<div class="rcard idea-card" data-id="${attr(v.id)}" style="--mc:${col}">
-      <div class="tile mono"><span>&#9670;</span></div>
+    const selOn=hubSel.mode&&hubSel.type==="idea", picked=selOn&&hubSel.ids.has(v.id);  // #17
+    const box=selOn?`<span class="selcheck${picked?" on":""}">${picked?"&#10003;":""}</span>`:"";
+    return `<div class="rcard idea-card${selOn?" selmode":""}${picked?" picked":""}" data-id="${attr(v.id)}" style="--mc:${col}">
+      ${box}<div class="tile mono"><span>&#9670;</span></div>
       <div class="rbody">
         <h3>${h(v.title)}</h3>
         ${v.summary?`<div class="snip">${h(v.summary)}</div>`:""}
@@ -1700,15 +1751,23 @@ const App = (() => {
       .map(g=>`<div class="daygroup crm-group"><div class="daylabel">${g.label}<span class="n">${g.list.length}</span></div>
         <div class="feed">${g.list.map(ventureCard).join("")}</div></div>`).join("");
 
+    const tools=`<div class="ptools secrow"><button class="btn ghost" id="ideaSelBtn">${hubSel.mode&&hubSel.type==="idea"?"Done":"Select"}</button></div>`;
+    const search=secSearchHTML("ideas","Search ideas…");
     app.innerHTML=`<div class="view idea-board">
       ${masthead({title:"Ideas",note:ed})}
       <div class="figrow">${ribbon}</div>
       ${lane}
-      ${groups||`<div class="empty"><div class="big">&#9676;</div>Nothing in this view.</div>`}</div>`;
+      ${tools}${search}
+      ${groups||`<div class="empty"><div class="big">&#9676;</div>Nothing in this view.</div>`}
+      ${hubSelBar()}</div>`;
     paintDone();
 
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{ venFilter=b.dataset.f; paintVentures(); });
-    app.querySelectorAll(".idea-card").forEach(c=>c.onclick=()=>go("/ventures/"+encodeURIComponent(c.dataset.id)));
+    app.querySelectorAll(".idea-card").forEach(c=>c.onclick=()=>{
+      if(hubSel.mode&&hubSel.type==="idea"){ toggleHubSel(c.dataset.id); return; }   // #17
+      go("/ventures/"+encodeURIComponent(c.dataset.id)); });
+    const isb=document.getElementById("ideaSelBtn"); if(isb) isb.onclick=()=>hubSelToggle("idea");
+    bindHubSelBar("idea"); bindSecSearch(app,".idea-card");
     app.querySelectorAll(".owerow").forEach(r=>r.onclick=()=>go("/ventures/"+encodeURIComponent(r.dataset.id)));
     app.querySelectorAll(".owerow .cta[data-open]").forEach(b=>b.onclick=(e)=>{e.stopPropagation();go("/ventures/"+encodeURIComponent(b.dataset.open));});
   }
@@ -1755,7 +1814,8 @@ const App = (() => {
         <button class="btn" id="genBtn">&#10038; Generate build plan</button></div>`;
 
     app.innerHTML=`<div class="view detail view--wide idea-dossier" style="--mc:${col}">
-      <span class="backlink" onclick="App.back('/lucid/ideas')">&larr; Ideas</span>
+      <div class="detail-top"><span class="backlink" onclick="App.back('/lucid/ideas')">&larr; Ideas</span>
+        <button class="btn ghost danger" id="ideaDel">Delete idea</button></div>
       <div class="dhero">${ringHTML(col,100,"&#9670;")}
         <div><h1>${h(v.title)}</h1>
           <div class="dmeta"><span class="mc">${v.proposed_by?h(v.proposed_by):"Idea"}</span>
@@ -1773,6 +1833,8 @@ const App = (() => {
     const gen=document.getElementById("genBtn"); if(gen) gen.onclick=()=>buildVenture(v.id, gen);
     app.querySelectorAll(".rebuildBtn").forEach(b=>b.onclick=()=>buildVenture(v.id, b));
     const cs=app.querySelector("[data-copy-spec]"); if(cs) cs.onclick=()=>copySummary(cs.closest(".panel"));
+    const idel=document.getElementById("ideaDel");
+    if(idel) idel.onclick=()=>{ if(confirm(`Delete the idea “${v.title||"this idea"}”? This can't be undone.`)) deleteIdea(v.id); };
   }
 
   async function buildVenture(id, btn){
@@ -2810,6 +2872,262 @@ const App = (() => {
       }catch(e){ err.textContent="Network error — try again."; btn.disabled=false; } };
     btn.onclick=submit; pw.onkeydown=e=>{ if(e.key==="Enter") submit(); };
     setTimeout(()=>{ try{pw.focus();}catch(_){}} ,120);
+  }
+
+  // ===== #16 — in-section live search =====
+  // A glass input per list; filters already-rendered cards by visible text (no re-render → keeps focus).
+  function secSearchHTML(key, ph){
+    return `<div class="secsearch"><span class="mag">&#8981;</span>
+      <input type="search" inputmode="search" enterkeyhint="search" placeholder="${attr(ph||"Search…")}"
+        autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+        value="${attr(secSearch[key]||"")}" data-secsearch="${attr(key)}"></div>`;
+  }
+  function bindSecSearch(scope, itemSel){
+    const input=scope.querySelector("input[data-secsearch]"); if(!input) return;
+    const key=input.dataset.secsearch;
+    const run=()=>{ const q=(input.value||"").trim().toLowerCase(); secSearch[key]=input.value;
+      scope.querySelectorAll(itemSel).forEach(el=>{
+        el.style.display=(!q||(el.textContent||"").toLowerCase().includes(q))?"":"none"; });
+      scope.querySelectorAll(".daygroup").forEach(g=>{ const items=g.querySelectorAll(itemSel);
+        if(!items.length) return; let any=false; items.forEach(el=>{ if(el.style.display!=="none") any=true; });
+        g.style.display=any?"":"none"; }); };
+    input.oninput=run; if((input.value||"").trim()) run();
+  }
+
+  // ===== #19 — reusable glass context menu (right-click / long-press) =====
+  let _ctxEl=null, _ctxSuppress=false;
+  function closeContextMenu(){ if(_ctxEl){ _ctxEl.remove(); _ctxEl=null; } }
+  function openContextMenu(x, y, items){
+    closeContextMenu();
+    const m=document.createElement("div"); m.className="ctxmenu"; m.setAttribute("role","menu"); _ctxEl=m;
+    m.innerHTML=(items||[]).map((it,i)=> it.sep?`<div class="ctxsep"></div>`
+      :`<button class="ctxitem${it.danger?" danger":""}" role="menuitem" data-ci="${i}">${h(it.label)}</button>`).join("");
+    document.body.appendChild(m);
+    const mw=m.offsetWidth, mh=m.offsetHeight;             // untransformed size → clamp to viewport
+    m.style.left=Math.max(8, Math.min(x, innerWidth-mw-8))+"px";
+    m.style.top =Math.max(8, Math.min(y, innerHeight-mh-8))+"px";
+    m.querySelectorAll(".ctxitem").forEach(b=>b.onclick=(e)=>{ e.stopPropagation();
+      const it=items[+b.dataset.ci]; closeContextMenu(); try{ it&&it.run&&it.run(); }catch(_){} });
+    requestAnimationFrame(()=>m.classList.add("open"));
+  }
+  const CTX_SEL=".rcard,.pcard,.idea-card,.crmcard";
+  function ctxItemsForCard(card){
+    if(!card) return [];
+    if(card.classList.contains("notecard")){ const id=card.dataset.id;
+      return [ {label:"✦ Ask Lucid", run:()=>go("/r/"+id)},
+        {label:"Add to project…", run:()=>openProjectPicker([{type:"note",ref:id}])},
+        {sep:true}, {label:"Delete", danger:true, run:()=>slideOut(card,()=>del(id))} ]; }
+    if(card.classList.contains("idea-card")){ const id=card.dataset.id;
+      return [ {label:"Open", run:()=>go("/ventures/"+encodeURIComponent(id))},
+        {label:"Add to project…", run:()=>openProjectPicker([{type:"idea",ref:id}])},
+        {sep:true}, {label:"Delete idea", danger:true, run:()=>{ if(confirm("Delete this idea? This can't be undone.")) deleteIdea(id); }} ]; }
+    if(card.classList.contains("crmcard")){ const email=card.dataset.email;
+      const dup=((crmData&&crmData.duplicates)||[]).find(x=>x&&(x.primary_email===email||x.duplicate_email===email));
+      const items=[ {label:"Open", run:()=>go("/crm/"+encodeURIComponent(email))} ];
+      if(dup) items.push({label:"Merge duplicate…", run:()=>mergeDupe(dup)});
+      items.push({sep:true}, {label:"Remove from CRM", danger:true, run:()=>crmOverride(email,"remove")});
+      return items; }
+    if(card.classList.contains("pcard")){ const key=card.dataset.key;
+      return [ {label:"Open", run:()=>go("/people/"+encodeURIComponent(key))},
+        {label:"Add to project…", run:()=>openProjectPicker([{type:"person",ref:key}])},
+        {sep:true}, {label:"Forget", danger:true, run:()=>{ if(confirm("Forget everything learned about this person? (their recordings stay)")) forgetPerson(key); }} ]; }
+    return [];
+  }
+  app.addEventListener("contextmenu",(e)=>{ const card=e.target.closest&&e.target.closest(CTX_SEL);
+    if(!card) return; const items=ctxItemsForCard(card); if(!items||!items.length) return;
+    e.preventDefault(); openContextMenu(e.clientX,e.clientY,items); });
+  let _lpT=null,_lpXY=null;
+  app.addEventListener("touchstart",(e)=>{ const card=e.target.closest&&e.target.closest(CTX_SEL);
+    if(!card||e.touches.length>1) return; const t=e.touches[0]; _lpXY={x:t.clientX,y:t.clientY};
+    clearTimeout(_lpT); _lpT=setTimeout(()=>{ _lpT=null; const items=ctxItemsForCard(card);
+      if(items&&items.length){ _ctxSuppress=true; setTimeout(()=>{ _ctxSuppress=false; },500); haptic(18);
+        openContextMenu(_lpXY.x,_lpXY.y,items); } },500); },{passive:true});
+  const _lpCancel=()=>{ if(_lpT){ clearTimeout(_lpT); _lpT=null; } };
+  app.addEventListener("touchmove",(e)=>{ if(_lpT&&_lpXY){ const t=e.touches[0];
+    if(Math.abs(t.clientX-_lpXY.x)>10||Math.abs(t.clientY-_lpXY.y)>10) _lpCancel(); } },{passive:true});
+  app.addEventListener("touchend",_lpCancel); app.addEventListener("touchcancel",_lpCancel);
+  app.addEventListener("click",(e)=>{ if(_ctxSuppress){ _ctxSuppress=false; e.stopPropagation(); e.preventDefault(); } }, true);
+  document.addEventListener("click",(e)=>{ if(_ctxEl && !(e.target.closest&&e.target.closest(".ctxmenu"))) closeContextMenu(); });
+  document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") closeContextMenu(); });
+  addEventListener("scroll",()=>{ if(_ctxEl) closeContextMenu(); }, true);
+  addEventListener("resize",()=>{ if(_ctxEl) closeContextMenu(); });
+
+  // ===== #15 — deletes (people / ideas) used by the context menu + detail views =====
+  async function forgetPerson(key){
+    try{ await api("/api/people/"+encodeURIComponent(key),{method:"DELETE"}); }
+    catch(e){ toast("Couldn't forget"); return; }
+    toast("Forgotten"); haptic(); pplCache=pplCache.filter(p=>p.key!==key); try{ sel.delete(key); }catch(_){}
+    cache=[]; searchIdx=null;
+    if(location.pathname==="/lucid/people") renderPeople();
+    else if(location.pathname.startsWith("/people/")) go("/lucid/people");
+  }
+  async function deleteIdea(id){
+    try{ await api("/api/ventures/"+encodeURIComponent(id),{method:"DELETE"}); }
+    catch(e){ toast("Couldn't delete the idea"); return; }
+    toast("Idea deleted"); haptic(); venData=(venData||[]).filter(v=>v.id!==id); searchIdx=null;
+    if(location.pathname.startsWith("/ventures/")) go("/lucid/ideas");
+    else if(location.pathname==="/lucid/ideas") paintVentures();
+  }
+  async function mergeDupe(dup){
+    try{ await api("/api/crm/board/merge",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({primary:dup.primary_email, duplicate:dup.duplicate_email})}); }
+    catch(e){ toast("Couldn't merge"); return; }
+    toast("Merged ✓"); haptic();
+    if(crmData&&crmData.duplicates) crmData.duplicates=crmData.duplicates.filter(x=>x!==dup);
+    if(location.pathname==="/crm") paintCRM();
+  }
+
+  // ===== #14 — duplicate dismissals (client-side) =====
+  const _dupKey=(d)=>`${(d&&d.primary_email)||""}|${(d&&d.duplicate_email)||""}`;
+  function dismissedDupes(){ try{ return new Set(JSON.parse(localStorage.getItem("lucid_dismissed_dupes")||"[]")); }catch(_){ return new Set(); } }
+  function dismissDupe(k){ const s=dismissedDupes(); s.add(k);
+    try{ localStorage.setItem("lucid_dismissed_dupes",JSON.stringify([...s])); }catch(_){} }
+
+  // ===== #17 — hub multi-select (notes / ideas) =====
+  function rerenderHub(){ const p=location.pathname;
+    if(p==="/lucid/notes") paintNotes(); else if(p==="/lucid/ideas") paintVentures(); }
+  function hubSelToggle(type){ if(hubSel.mode&&hubSel.type===type){ hubSelExit(); return; }
+    hubSel.mode=true; hubSel.type=type; hubSel.ids=new Set(); rerenderHub(); }
+  function hubSelExit(){ hubSel.mode=false; hubSel.type=null; hubSel.ids=new Set(); rerenderHub(); }
+  function toggleHubSel(id){ if(hubSel.ids.has(id)) hubSel.ids.delete(id); else hubSel.ids.add(id); rerenderHub(); }
+  function hubSelBar(){ if(!hubSel.mode) return "";
+    return `<div class="selbar"><span>${hubSel.ids.size} selected</span>
+      <button class="btn" id="hubAddProj"${hubSel.ids.size?"":" disabled"}>Add to project</button>
+      <button class="btn ghost" id="hubSelCancel">Cancel</button></div>`; }
+  function bindHubSelBar(){
+    const a=document.getElementById("hubAddProj");
+    if(a) a.onclick=()=>{ if(!hubSel.ids.size) return;
+      openProjectPicker([...hubSel.ids].map(ref=>({type:hubSel.type, ref}))); };
+    const c=document.getElementById("hubSelCancel"); if(c) c.onclick=hubSelExit;
+  }
+
+  // ===== #17 — PROJECTS (folders) =====
+  async function showProjects(){
+    hubSel.mode=false;
+    app.innerHTML=`<div class="view projects-view">${masthead({title:"Projects"})}${skeletons(3)}</div>`;
+    let list; try{ list=await api("/api/projects"); }catch(e){ return authOrError(e,showProjects); }
+    _projects=Array.isArray(list)?list:[]; paintProjects();
+  }
+  function paintProjects(){
+    const list=_projects||[];
+    setSubline(list.length?`${list.length} project${list.length!==1?"s":""}`:"projects");
+    const ed=list.length?`Group notes, people and ideas into folders you control — <b>${list.length}</b> so far.`
+      :"Group notes, people and ideas into folders you control.";
+    const cards=list.map(p=>{ const c=p.counts||{};
+      const meta=[c.note&&`${c.note} note${c.note>1?"s":""}`, c.person&&`${c.person} ${c.person>1?"people":"person"}`,
+        c.idea&&`${c.idea} idea${c.idea>1?"s":""}`].filter(Boolean).join(" · ")||"Empty";
+      return `<div class="rcard projcard" data-pid="${attr(p.id)}" style="--mc:var(--accent)">
+        <div class="tile mono"><span>&#9638;</span></div>
+        <div class="rbody"><h3>${h(p.name)}</h3>
+          <div class="rmeta"><span class="chip">${h(meta)}</span><span class="time">${h(rel(p.updated_at||p.created_at))}</span></div>
+        </div></div>`; }).join("");
+    app.innerHTML=`<div class="view projects-view">
+      ${masthead({title:`Projects <span class="count">${list.length}</span>`, note:ed})}
+      <div class="ptools"><button class="btn" id="newProj">+ New project</button></div>
+      ${list.length?`<div class="feed">${cards}</div>`:`<div class="empty"><div class="big">&#9638;</div>No projects yet.
+        <div class="hint">Create one, then add notes, people or ideas to it from any card's menu (right-click or long-press), or with Select.</div></div>`}</div>`;
+    paintDone();
+    const nb=document.getElementById("newProj"); if(nb) nb.onclick=createProject;
+    app.querySelectorAll(".projcard").forEach(c=>c.onclick=()=>showProject(c.dataset.pid));
+  }
+  async function createProject(){
+    const name=prompt("Name your project"); if(!name||!name.trim()) return;
+    try{ await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim()})}); }
+    catch(e){ toast("Couldn't create project"); return; }
+    toast("Project created ✓"); _projects=null; showProjects();
+  }
+  async function showProject(pid){
+    app.innerHTML=`<div class="view projects-view"><span class="backlink" id="projBack">&larr; Projects</span>${skeletons(2)}</div>`;
+    const bb=document.getElementById("projBack"); if(bb) bb.onclick=()=>showProjects();
+    let p,recs,ppl,vens;
+    try{ [p,recs,ppl,vens]=await Promise.all([
+      api("/api/projects/"+encodeURIComponent(pid)),
+      api("/api/recordings").catch(()=>[]), api("/api/people").catch(()=>[]), api("/api/ventures").catch(()=>[]) ]); }
+    catch(e){ return authOrError(e,()=>showProject(pid)); }
+    renderProject(p,{recs:recs||[], ppl:ppl||[], vens:vens||[]});
+  }
+  function renderProject(p, data){
+    const recs=data.recs||[], ppl=data.ppl||[], vens=data.vens||[];
+    const noteOf=id=>recs.find(r=>r.id===id), personOf=k=>ppl.find(x=>x.key===k), ideaOf=id=>vens.find(v=>v.id===id);
+    const items=(p.items||[]).slice().sort((a,b)=>new Date(b.added_at||0)-new Date(a.added_at||0));
+    const g={note:[],person:[],idea:[]}; items.forEach(it=>{ if(g[it.type]) g[it.type].push(it); });
+    setSubline(p.name||"Project");
+    const row=(it,title,sub,path)=>`<div class="projrow" data-type="${attr(it.type)}" data-ref="${attr(it.ref)}">
+        <div class="pr-main"${path?` data-go="${attr(path)}"`:""}><div class="pr-t">${h(title)}</div>${sub?`<div class="pr-s">${h(sub)}</div>`:""}</div>
+        <button class="pr-x" title="Remove from project" aria-label="Remove from project">&#10005;</button></div>`;
+    const sect=(label,arr,fn)=> arr.length?`<div class="daygroup"><div class="daylabel">${label}<span class="n">${arr.length}</span></div>
+        <div class="projlist">${arr.map(fn).join("")}</div></div>`:"";
+    const notesSec=sect("Notes",g.note,it=>{ const r=noteOf(it.ref);
+      return row(it, r?(r.headline||"Untitled note"):"Note", r?(r.summary||""):"", r?("/r/"+it.ref):""); });
+    const pplSec=sect("People",g.person,it=>{ const x=personOf(it.ref);
+      return row(it, x?x.name:it.ref, x?(x.role||""):"", "/people/"+encodeURIComponent(it.ref)); });
+    const ideaSec=sect("Ideas",g.idea,it=>{ const v=ideaOf(it.ref);
+      return row(it, v?v.title:"Idea", v?(v.summary||""):"", "/ventures/"+encodeURIComponent(it.ref)); });
+    app.innerHTML=`<div class="view projects-view">
+      <span class="backlink" id="projBack">&larr; Projects</span>
+      ${masthead({title:h(p.name), note:`<b>${items.length}</b> item${items.length!==1?"s":""} in this project`, refresh:false})}
+      <div class="ptools"><button class="btn ghost" id="projRename">Rename</button>
+        <button class="btn ghost danger" id="projDelete">Delete project</button></div>
+      ${notesSec}${pplSec}${ideaSec}
+      ${items.length?"":`<div class="empty"><div class="big">&#9638;</div>This project is empty.
+        <div class="hint">Add notes, people or ideas from any card's menu (right-click or long-press), or use Select on a hub list.</div></div>`}</div>`;
+    paintDone();
+    const bb=document.getElementById("projBack"); if(bb) bb.onclick=()=>showProjects();
+    app.querySelectorAll(".pr-main[data-go]").forEach(el=>el.onclick=()=>go(el.dataset.go));
+    app.querySelectorAll(".projrow .pr-x").forEach(b=>b.onclick=(e)=>{ e.stopPropagation();
+      const r=b.closest(".projrow"); detachItem(p.id, r.dataset.type, r.dataset.ref, r); });
+    const rn=document.getElementById("projRename"); if(rn) rn.onclick=async()=>{
+      const name=prompt("Rename project", p.name||""); if(name==null||!name.trim()||name.trim()===p.name) return;
+      try{ await api("/api/projects/"+encodeURIComponent(p.id),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim()})}); }
+      catch(e){ toast("Couldn't rename"); return; }
+      toast("Renamed"); _projects=null; p.name=name.trim(); renderProject(p,data); };
+    const dl=document.getElementById("projDelete"); if(dl) dl.onclick=async()=>{
+      if(!confirm(`Delete the project “${p.name}”? The notes, people and ideas themselves are kept.`)) return;
+      try{ await api("/api/projects/"+encodeURIComponent(p.id),{method:"DELETE"}); }
+      catch(e){ toast("Couldn't delete"); return; }
+      toast("Project deleted"); _projects=null; showProjects(); };
+  }
+  async function detachItem(pid, type, ref, rowEl){
+    try{ await api("/api/projects/"+encodeURIComponent(pid)+"/detach",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type,ref})}); }
+    catch(e){ toast("Couldn't remove"); return; }
+    toast("Removed from project"); _projects=null;
+    if(rowEl){ const grp=rowEl.closest(".daygroup"); rowEl.remove();
+      if(grp && !grp.querySelector(".projrow")) grp.remove(); }
+  }
+  async function openProjectPicker(items){
+    if(!items||!items.length) return;
+    let list=_projects;
+    if(!list){ try{ list=await api("/api/projects"); _projects=list; }catch(e){ if(String(e.message)==="auth") return showLogin(); list=[]; } }
+    const wrap=document.createElement("div"); wrap.className="sheet-wrap";
+    const rows=(list||[]).map(p=>`<button class="projpick-row" data-pid="${attr(p.id)}">
+        <span class="pp-name">${h(p.name)}</span><span class="pp-n">${p.item_count||0}</span></button>`).join("")
+      || `<div class="muted" style="font-size:14px;padding:6px 2px 4px">No projects yet — create your first below.</div>`;
+    wrap.innerHTML=`<div class="sheet-bg"></div>
+      <div class="sheet projpick"><div class="sheet-grab"></div>
+        <div class="sheet-head"><div class="sheet-id"><div class="pname">Add to project</div>
+          <div class="prole">${items.length} item${items.length>1?"s":""}</div></div>
+          <button class="iconbtn sheet-close" aria-label="Close">&#10005;</button></div>
+        <div class="sheet-body">
+          <div class="projpick-list">${rows}</div>
+          <button class="btn" id="ppNew" style="width:100%;margin-top:12px">+ New project…</button>
+        </div></div>`;
+    document.body.appendChild(wrap); document.body.style.overflow="hidden";
+    const close=()=>{ wrap.remove(); document.body.style.overflow=""; };
+    wrap.querySelector(".sheet-bg").onclick=close; wrap.querySelector(".sheet-close").onclick=close;
+    attachSheetDrag(wrap.querySelector(".sheet"), close);
+    wrap.querySelectorAll(".projpick-row").forEach(b=>b.onclick=async()=>{ close(); await attachToProject(b.dataset.pid, items); });
+    wrap.querySelector("#ppNew").onclick=async()=>{ const name=prompt("New project name"); if(!name||!name.trim()) return;
+      let np; try{ np=await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim()})}); }
+      catch(e){ toast("Couldn't create project"); return; }
+      _projects=null; close(); await attachToProject(np.id, items); };
+    requestAnimationFrame(()=>wrap.classList.add("open"));
+  }
+  async function attachToProject(pid, items){
+    let r; try{ r=await api("/api/projects/"+encodeURIComponent(pid)+"/attach",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items})}); }
+    catch(e){ toast("Couldn't add to project"); return; }
+    _projects=null; const n=(r&&r.added!=null)?r.added:items.length;
+    toast(`Added ${n} to project ✓`); haptic();
+    if(hubSel.mode) hubSelExit();
   }
 
   bindWorkBtn();

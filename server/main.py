@@ -38,7 +38,7 @@ from . import backup, email_login, setup_service, storage, tunnel
 from .config import settings
 from .ingest import intake, plaud_cloud, telegram_bot, watcher
 from .models import Status
-from .pipeline import analyze, assistant, directory, relationships, runner, ventures
+from .pipeline import analyze, assistant, directory, projects, relationships, runner, ventures
 from .pipeline.rename import rename_person as _rename_in
 
 app = FastAPI(title="Lucid", version="1.0.0")
@@ -946,6 +946,78 @@ def get_person(key: str) -> JSONResponse:
 
 
 # --------------------------------------------------------------------------- #
+# Projects (folders) + venture deletion  (ADDED section)
+# Projects are user-curated collections of notes / people / ideas — see
+# server/pipeline/projects.py. Deleting a venture tombstones it (ventures are
+# auto-derived from notes) so it never re-appears — see ventures.delete_venture.
+# --------------------------------------------------------------------------- #
+@app.delete("/api/ventures/{vid}", dependencies=[Depends(auth)])
+def delete_venture(vid: str) -> dict:
+    ventures.delete_venture(vid)
+    return {"deleted": vid}
+
+
+@app.get("/api/projects", dependencies=[Depends(auth)])
+def list_projects() -> list[dict]:
+    return projects.list_projects()
+
+
+@app.post("/api/projects", dependencies=[Depends(auth)])
+async def create_project(request: Request) -> JSONResponse:
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Project name is required")
+    return JSONResponse(projects.create_project(name))
+
+
+@app.get("/api/projects/{pid}", dependencies=[Depends(auth)])
+def get_project(pid: str) -> JSONResponse:
+    p = projects.get_project(pid)
+    if not p:
+        raise HTTPException(404, "No such project")
+    return JSONResponse(p)
+
+
+@app.patch("/api/projects/{pid}", dependencies=[Depends(auth)])
+async def rename_project(pid: str, request: Request) -> JSONResponse:
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Project name is required")
+    p = projects.rename_project(pid, name)
+    if not p:
+        raise HTTPException(404, "No such project")
+    return JSONResponse(p)
+
+
+@app.delete("/api/projects/{pid}", dependencies=[Depends(auth)])
+def delete_project(pid: str) -> dict:
+    projects.delete_project(pid)
+    return {"deleted": pid}
+
+
+@app.post("/api/projects/{pid}/attach", dependencies=[Depends(auth)])
+async def attach_to_project(pid: str, request: Request) -> JSONResponse:
+    body = await request.json()
+    items = body.get("items")
+    if not isinstance(items, list):
+        # tolerate a single {type, ref} body
+        items = [{"type": body.get("type"), "ref": body.get("ref")}]
+    result = projects.attach_many(pid, items)
+    if not result.get("ok"):
+        raise HTTPException(404, "No such project")
+    return JSONResponse(result)
+
+
+@app.post("/api/projects/{pid}/detach", dependencies=[Depends(auth)])
+async def detach_from_project(pid: str, request: Request) -> JSONResponse:
+    body = await request.json()
+    ok = projects.detach(pid, body.get("type"), body.get("ref"))
+    return JSONResponse({"ok": ok})
+
+
+# --------------------------------------------------------------------------- #
 # Voice enrollment + assistant + rename
 # --------------------------------------------------------------------------- #
 @app.get("/api/voiceprints", dependencies=[Depends(auth)])
@@ -1061,6 +1133,21 @@ async def crm_board_override(request: Request) -> JSONResponse:
     if not email or action not in ("promote", "lead", "remove"):
         return JSONResponse({"ok": False, "error": "bad request"}, status_code=400)
     ok = await asyncio.to_thread(crm_sync.set_override, email, action)
+    if ok:
+        crm_sync.refresh_async()
+    return JSONResponse({"ok": ok, "refreshing": crm_sync.status().get("running", False)})
+
+
+@app.post("/api/crm/board/merge", dependencies=[Depends(auth)])
+async def crm_board_merge(request: Request) -> JSONResponse:
+    """Merge a detected duplicate contact into its primary. body: {primary, duplicate}."""
+    from .integrations import crm_sync
+    b = await request.json()
+    primary = (b.get("primary") or "").strip().lower()
+    dup = (b.get("duplicate") or "").strip().lower()
+    if not primary or not dup or primary == dup:
+        return JSONResponse({"ok": False, "error": "bad request"}, status_code=400)
+    ok = await asyncio.to_thread(crm_sync.merge_contacts, primary, dup)
     if ok:
         crm_sync.refresh_async()
     return JSONResponse({"ok": ok, "refreshing": crm_sync.status().get("running", False)})

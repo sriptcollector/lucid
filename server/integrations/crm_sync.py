@@ -90,3 +90,18 @@ def set_override(email: str, action: str) -> bool:
         return r.returncode == 0
     except Exception:
         return False
+
+
+def merge_contacts(primary: str, duplicate: str) -> bool:
+    """Record a sticky duplicate merge via `cli.py merge <primary> <duplicate>` so future syncs
+    fold the duplicate's touchpoints into the primary contact. Caller then refreshes."""
+    crm_dir, py = _paths()
+    if not primary or not duplicate or primary == duplicate or not Path(crm_dir, "cli.py").exists():
+        return False
+    try:
+        r = subprocess.run([py, "cli.py", "merge", primary, duplicate], cwd=crm_dir,
+                           env=dict(os.environ, PYTHONIOENCODING="utf-8"),
+                           capture_output=True, text=True, timeout=60)
+        return r.returncode == 0
+    except Exception:
+        return False

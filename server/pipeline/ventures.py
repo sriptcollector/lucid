@@ -42,6 +42,7 @@ def _load() -> dict:
     except Exception:
         d = {}
     d.setdefault("specs", {})     # venture_id -> {"hash":..., "spec":{...}}
+    d.setdefault("deleted", [])   # venture_ids the user removed (won't re-derive)
     return d
 
 
@@ -162,12 +163,16 @@ def _business_ids(ventures: dict) -> set[str]:
 
 
 def list_ventures() -> list[dict]:
-    specs = _load()["specs"]
+    data = _load()
+    specs = data["specs"]
+    deleted = set(data.get("deleted", []))
     collected = _collect()
     business = _business_ids(collected)
     out = []
     for v in collected.values():
         if v["id"] not in business:
+            continue
+        if v["id"] in deleted:
             continue
         people = sorted({p["person"] for p in v["perspectives"] if p["person"]})
         cached = specs.get(v["id"])
@@ -188,13 +193,39 @@ def list_ventures() -> list[dict]:
 
 
 def get_venture(vid: str) -> Optional[dict]:
+    data = _load()
+    deleted = set(data.get("deleted", []))
     v = _collect().get(_norm(vid)) or _collect().get(vid)
     if not v:
         return None
-    cached = _load()["specs"].get(v["id"])
+    if v["id"] in deleted:
+        return None
+    cached = data["specs"].get(v["id"])
     v["spec"] = cached["spec"] if (cached and cached.get("hash") == _fingerprint(v)) else None
     v["spec_stale"] = bool(cached) and cached.get("hash") != _fingerprint(v)
     return v
+
+
+def delete_venture(vid: str) -> bool:
+    """Tombstone a venture so it never re-derives from notes. Best-effort.
+
+    Ventures are auto-clustered from recordings in _collect(), so there's no row
+    to delete — instead we record the venture id (and its normalized form) in a
+    `deleted` set persisted in ventures.json, and list_ventures/get_venture
+    filter those out. Idempotent."""
+    keys = {k for k in (vid, _norm(vid)) if k}
+    if not keys:
+        return False
+    try:
+        with _lock:
+            d = _load()
+            deleted = set(d.get("deleted", []))
+            deleted |= keys
+            d["deleted"] = sorted(deleted)
+            _save(d)
+        return True
+    except Exception:
+        return False
 
 
 # --------------------------------------------------------------------------- #
