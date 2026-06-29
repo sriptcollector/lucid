@@ -249,26 +249,71 @@ const App = (() => {
   // brand → Today; "/" focuses global search on desktop (search is an app-bar tool, not a tab)
   const _brand=document.getElementById("brandHome"); if(_brand) _brand.onclick=()=>go("/");
 
-  // Capture → push an audio file into the real intake pipeline (POST /api/upload)
+  // Capture → real modal: record (mic) or upload → live processing stages → the analyzed note
   const _capBtn=document.getElementById("captureBtn");
-  const _capInput=document.getElementById("captureFile");
-  if(_capBtn && _capInput){
-    _capBtn.onclick=()=>_capInput.click();
-    _capInput.onchange=async()=>{
-      const f=_capInput.files && _capInput.files[0]; _capInput.value="";
-      if(!f) return;
-      toast(`Uploading ${f.name}…`); haptic();
-      try{
-        const fd=new FormData(); fd.append("file", f, f.name);
-        await api("/api/upload",{method:"POST",body:fd});   // api() adds auth; browser sets multipart boundary
-        toast("Captured — Lucid is processing it");
-        cache=[]; brief=null;                                // force a fresh pull so the new note surfaces
-        go("/notes");
-      }catch(e){
-        if(String(e.message)==="auth") return showLogin();
-        toast(String(e.message||"Upload failed").slice(0,140));
-      }
+  if(_capBtn) _capBtn.onclick=openCapture;
+  const WAVE='<div class="capwave">'+Array(12).fill('<span></span>').join("")+'</div>';
+  function openCapture(){
+    const wrap=document.createElement("div"); wrap.className="capwrap";
+    wrap.innerHTML=`<div class="capbg"></div><div class="capmodal" role="dialog" aria-modal="true">
+      <div class="caphead"><span class="capdot"></span><b>Capture</b><span class="capsub" id="capSub">Record or upload a conversation</span><button class="capx" aria-label="Close">&#10005;</button></div>
+      <div class="capbody" id="capBody"><div class="capchoose">
+        <button class="capbtn" id="capRec"><span class="capglyph">&#9679;</span>Record now</button>
+        <button class="capbtn" id="capUp"><span class="capglyph">&#8593;</span>Upload audio</button>
+      </div></div></div>`;
+    document.body.appendChild(wrap); document.body.style.overflow="hidden";
+    let _mr=null,_chunks=[],_poll=null,_ti=null;
+    const stopPoll=()=>{ if(_poll){clearInterval(_poll);_poll=null;} };
+    const close=()=>{ try{ if(_mr&&_mr.state!=="inactive")_mr.stop(); }catch(_){} stopPoll(); if(_ti)clearInterval(_ti);
+      wrap.remove(); document.body.style.overflow=""; document.removeEventListener("keydown",onKey); };
+    const onKey=e=>{ if(e.key==="Escape") close(); };
+    document.addEventListener("keydown",onKey);
+    wrap.querySelector(".capbg").onclick=close; wrap.querySelector(".capx").onclick=close;
+    const body=wrap.querySelector("#capBody"), sub=wrap.querySelector("#capSub");
+    wrap.querySelector("#capUp").onclick=()=>{ const inp=document.createElement("input"); inp.type="file"; inp.accept="audio/*";
+      inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(f) startUpload(f); }; inp.click(); };
+    wrap.querySelector("#capRec").onclick=async()=>{
+      if(!navigator.mediaDevices||!window.MediaRecorder){ sub.textContent="Recording unsupported — use Upload."; return; }
+      try{ const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+        _mr=new MediaRecorder(stream); _chunks=[];
+        _mr.ondataavailable=e=>{ if(e.data&&e.data.size)_chunks.push(e.data); };
+        _mr.onstop=()=>{ try{stream.getTracks().forEach(t=>t.stop());}catch(_){} const blob=new Blob(_chunks,{type:(_mr&&_mr.mimeType)||"audio/webm"});
+          startUpload(new File([blob],"recording.webm",{type:blob.type})); };
+        _mr.start(); recordingUI();
+      }catch(e){ sub.textContent="Mic blocked — use Upload instead."; }
     };
+    function recordingUI(){ sub.textContent="Recording";
+      body.innerHTML=`${WAVE.replace('capwave','capwave working')}<div class="capstage" id="capT">0:00</div>
+        <button class="btn primary" id="capStop">&#9632; Stop &amp; process</button>`;
+      const t0=Date.now(); _ti=setInterval(()=>{ const d=Math.floor((Date.now()-t0)/1000); const el=document.getElementById("capT");
+        if(el) el.textContent=Math.floor(d/60)+":"+String(d%60).padStart(2,"0"); },500);
+      wrap.querySelector("#capStop").onclick=()=>{ if(_ti)clearInterval(_ti); try{_mr.stop();}catch(_){} };
+    }
+    async function startUpload(file){
+      body.innerHTML=`${WAVE.replace('capwave','capwave working')}<div class="capstage" id="capStage">Uploading…</div>`;
+      sub.textContent="Working"; let id;
+      try{ const fd=new FormData(); fd.append("file",file,file.name||"recording.webm");
+        const r=await api("/api/upload",{method:"POST",body:fd}); id=r&&r.id; }
+      catch(e){ const el=document.getElementById("capStage"); if(el) el.textContent=String(e.message)==="auth"?"Please sign in again.":"Upload failed."; return; }
+      if(!id){ const el=document.getElementById("capStage"); if(el)el.textContent="Upload failed."; return; }
+      cache=[]; brief=null; try{ _journal=null; }catch(_){}
+      const labels={queued:"Pulling audio…",transcribing:"Transcribing with Claude…",translating:"Transcribing with Claude…",analyzing:"Analyzing the conversation…"};
+      _poll=setInterval(async()=>{ let rec; try{ rec=await api("/api/recordings/"+id); }catch(_){ return; }
+        const el=document.getElementById("capStage"); if(!el) return;
+        if(rec.status==="done"){ stopPoll(); capDone(rec); }
+        else if(rec.status==="error"){ stopPoll(); el.textContent="Couldn't process this recording."; }
+        else el.textContent=labels[rec.status]||"Processing…"; },2200);
+    }
+    function capDone(rec){ sub.textContent="Done";
+      body.innerHTML=`<div class="capdone"><div class="capeyebrow">&#10022; Claude analyzed</div>
+        <div class="caphl">${h(rec.headline||"New note")}</div>
+        ${rec.summary?`<div class="capsum">${h(rec.summary)}</div>`:""}
+        <div class="caprow"><button class="btn primary" id="capOpen">Open in Journal &#8594;</button>
+          <button class="btn ghost" id="capDone2">Done</button></div></div>`;
+      wrap.querySelector("#capOpen").onclick=()=>{ close(); go("/r/"+rec.id); };
+      wrap.querySelector("#capDone2").onclick=()=>{ close(); go("/journal"); };
+    }
+    requestAnimationFrame(()=>wrap.classList.add("open"));
   }
   document.addEventListener("keydown",(e)=>{ if(e.key==="/" && !e.metaKey && !e.ctrlKey && !e.altKey
     && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||"")
