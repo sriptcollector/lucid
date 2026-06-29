@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#070A38" />
+  <meta name="theme-color" content="#0A0B0E" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -11,40 +11,89 @@
   <title>Lucid</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..600&family=Hanken+Grotesk:wght@400..700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
 </head>
 <body>
-  <header class="appbar">
-    <div class="brand" id="brandHome">
-      <span class="rx">L</span>
-      <span class="wordmark">Lucid</span>
+  <!-- LEFT NAV RAIL — primary navigation on desktop (>=900px) -->
+  <aside class="rail" aria-label="Primary navigation">
+    <div class="rail-brand">
+      <span class="diamond" aria-hidden="true"></span>
+      <span class="rail-word">Lucid</span>
+      <span class="livepill"><span class="livedot"></span>live</span>
     </div>
-    <div class="sub" id="subline">The daily brief</div>
-    <div class="appbar-actions">
-      <button class="iconbtn pill" id="workBtn" aria-label="Relevance filter">Work</button>
-      <button class="iconbtn" id="searchBtn" data-nav="search" title="Search" aria-label="Search">&#8981;</button>
-      <button class="iconbtn" id="settingsBtn" data-nav="settings" title="Settings" aria-label="Settings">&#9881;</button>
-      <button class="iconbtn" id="themeBtn" title="Theme" aria-label="Theme">&#9681;</button>
-    </div>
-  </header>
 
-  <nav class="lucidbar" id="lucidbar" hidden aria-label="Lucid sections">
-    <div class="lucidbar-in">
-      <div class="segtoggle seg-lucid" role="tablist">
-        <button data-seg="notes"    role="tab" aria-selected="true"><span class="seg-ic">&#9636;</span>Notes</button>
-        <button data-seg="people"   role="tab" aria-selected="false"><span class="seg-ic">&#9677;</span>People</button>
-        <button data-seg="ideas"    role="tab" aria-selected="false"><span class="seg-ic">&#9670;</span>Ideas</button>
-        <button data-seg="projects" role="tab" aria-selected="false"><span class="seg-ic">&#9638;</span>Projects</button>
+    <button class="rail-search" data-nav="search" type="button" aria-label="Search">
+      <span class="rail-search-l">Search</span>
+      <span class="kbd">&#8984;K</span>
+    </button>
+
+    <nav class="rail-nav" aria-label="Sections">
+      <button class="rail-item active" data-tab="home"   aria-current="page"><span class="rail-idx">1</span><span class="rail-label">Today</span></button>
+      <button class="rail-item"        data-tab="journal"><span class="rail-idx">2</span><span class="rail-label">Journal</span></button>
+      <button class="rail-item"        data-tab="lucid"><span class="rail-idx">3</span><span class="rail-label">Lucid</span></button>
+      <button class="rail-item"        data-tab="crm"><span class="rail-idx">4</span><span class="rail-label">CRM</span><span class="rail-badge" id="railCrmBadge" hidden></span></button>
+      <button class="rail-item"        data-tab="review"><span class="rail-idx">5</span><span class="rail-label">Review</span><span class="rail-badge" id="railReviewBadge" hidden></span></button>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="rail-foot-h">Wired &amp; live</div>
+      <div class="srcpills">
+        <span class="srcpill"><span class="srcdot"></span>Plaud</span>
+        <span class="srcpill"><span class="srcdot"></span>Claude</span>
+        <span class="srcpill"><span class="srcdot"></span>Gmail</span>
+        <span class="srcpill"><span class="srcdot"></span>Calendar</span>
+        <span class="srcpill"><span class="srcdot"></span>Notion</span>
+      </div>
+      <div class="rail-user">
+        <span class="rail-mono">OJ</span>
+        <div class="rail-user-id">
+          <div class="rail-user-name">orion-jones</div>
+          <div class="rail-user-sub">lucid.orion-jones.com</div>
+        </div>
       </div>
     </div>
-  </nav>
+  </aside>
 
-  <main id="app"></main>
+  <div class="main">
+    <header class="appbar">
+      <div class="brand" id="brandHome">
+        <span class="rx" aria-hidden="true"></span>
+        <span class="wordmark">Lucid</span>
+      </div>
+      <button class="topsearch" data-nav="search" type="button" aria-label="Search">
+        <span class="topsearch-l">Search conversations, people, clients&#8230;</span>
+        <span class="kbd">&#8984;K</span>
+      </button>
+      <div class="sub" id="subline">The daily brief</div>
+      <div class="appbar-actions">
+        <button class="iconbtn pill" id="workBtn" aria-label="Relevance filter">Work</button>
+        <button class="iconbtn" id="settingsBtn" data-nav="settings" title="Settings" aria-label="Settings">&#9881;</button>
+        <button class="iconbtn" id="themeBtn" title="Theme" aria-label="Theme">&#9681;</button>
+        <button class="capbtn" id="captureBtn" type="button" aria-label="Capture audio">
+          <span class="capdot" aria-hidden="true"></span><span class="capbtn-l">Capture</span>
+        </button>
+      </div>
+    </header>
 
+    <nav class="lucidbar" id="lucidbar" hidden aria-label="Lucid sections">
+      <div class="lucidbar-in">
+        <div class="segtoggle seg-lucid" role="tablist">
+          <button data-seg="notes"    role="tab" aria-selected="true"><span class="seg-ic">&#9636;</span>Notes</button>
+          <button data-seg="people"   role="tab" aria-selected="false"><span class="seg-ic">&#9677;</span>People</button>
+          <button data-seg="ideas"    role="tab" aria-selected="false"><span class="seg-ic">&#9670;</span>Ideas</button>
+          <button data-seg="projects" role="tab" aria-selected="false"><span class="seg-ic">&#9638;</span>Projects</button>
+        </div>
+      </div>
+    </nav>
+
+    <main id="app"></main>
+  </div>
+
+  <!-- BOTTOM TAB BAR — primary navigation on mobile (<900px) -->
   <nav class="tabbar">
     <button data-tab="home" class="active"><span class="ic">&#8962;</span>Today</button>
     <button data-tab="journal"><span class="ic">&#9672;</span>Journal</button>
@@ -53,6 +102,7 @@
     <button data-tab="review"><span class="ic">&#10003;</span>Review</button>
   </nav>
 
+  <input id="captureFile" type="file" accept="audio/*" hidden aria-hidden="true" />
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script src="/app.js"></script>
 </body>

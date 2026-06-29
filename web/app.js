@@ -11,7 +11,7 @@ const App = (() => {
 
   // theme (system → dark → light) + live status-bar color
   const metaTheme=document.querySelector('meta[name="theme-color"]');
-  const PAPER={light:"#C9DCF3",dark:"#070A38"};
+  const PAPER={light:"#F4F5F7",dark:"#0A0B0E"};
   const applyTheme = () => { const t = localStorage.getItem("lucid_theme");
     if (t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme");
     const dark = t==="dark" || (!t && matchMedia("(prefers-color-scheme:dark)").matches);
@@ -142,9 +142,18 @@ const App = (() => {
   const setTab=(n)=>{
     document.querySelectorAll(".tabbar button").forEach(b=>{ const on=b.dataset.tab===n;
       b.classList.toggle("active",on); on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current"); });
+    // left nav rail (desktop) shares the same data-tab values as the bottom tabbar
+    document.querySelectorAll(".rail [data-tab]").forEach(b=>{ const on=b.dataset.tab===n;
+      b.classList.toggle("active",on); on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current"); });
     document.querySelectorAll(".appbar [data-nav]").forEach(b=>{ const on=b.dataset.nav===n;
       b.classList.toggle("on",on); on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current"); });
   };
+  // mirror a count onto the rail's CRM / Review badge
+  function setRailBadge(tab, n){
+    const el=document.getElementById(tab==="crm"?"railCrmBadge":"railReviewBadge");
+    if(!el) return; const v=Number(n)||0;
+    if(v>0){ el.textContent=String(v); el.hidden=false; } else { el.textContent=""; el.hidden=true; }
+  }
   const go=(p)=>{ try{ history.replaceState({...(history.state||{}), y:window.scrollY}, ""); }catch(_){}
     _pendingScrollY=null;
     const idx=((history.state&&history.state.idx)||0)+1;
@@ -153,6 +162,9 @@ const App = (() => {
   window.onpopstate=(e)=>{ _pendingScrollY=(e&&e.state&&typeof e.state.y==="number")?e.state.y:null; route(); };
   document.querySelectorAll(".tabbar button").forEach(b=>b.onclick=()=>go(b.dataset.tab==="home"?"/":"/"+b.dataset.tab));
   document.querySelectorAll(".appbar [data-nav]").forEach(b=>b.onclick=()=>go("/"+b.dataset.nav));
+  // left nav rail — same wiring as the tabbar/appbar (desktop primary nav)
+  document.querySelectorAll(".rail [data-tab]").forEach(b=>b.onclick=()=>go(b.dataset.tab==="home"?"/":"/"+b.dataset.tab));
+  document.querySelectorAll(".rail [data-nav]").forEach(b=>b.onclick=()=>go("/"+b.dataset.nav));
 
   function route(){ clearPoll(); __navPaint=true;
     document.querySelectorAll('.sheet-wrap,.namepick').forEach(n=>n.remove());
@@ -236,6 +248,28 @@ const App = (() => {
   syncAppH(); addEventListener("resize",syncAppH);
   // brand → Today; "/" focuses global search on desktop (search is an app-bar tool, not a tab)
   const _brand=document.getElementById("brandHome"); if(_brand) _brand.onclick=()=>go("/");
+
+  // Capture → push an audio file into the real intake pipeline (POST /api/upload)
+  const _capBtn=document.getElementById("captureBtn");
+  const _capInput=document.getElementById("captureFile");
+  if(_capBtn && _capInput){
+    _capBtn.onclick=()=>_capInput.click();
+    _capInput.onchange=async()=>{
+      const f=_capInput.files && _capInput.files[0]; _capInput.value="";
+      if(!f) return;
+      toast(`Uploading ${f.name}…`); haptic();
+      try{
+        const fd=new FormData(); fd.append("file", f, f.name);
+        await api("/api/upload",{method:"POST",body:fd});   // api() adds auth; browser sets multipart boundary
+        toast("Captured — Lucid is processing it");
+        cache=[]; brief=null;                                // force a fresh pull so the new note surfaces
+        go("/notes");
+      }catch(e){
+        if(String(e.message)==="auth") return showLogin();
+        toast(String(e.message||"Upload failed").slice(0,140));
+      }
+    };
+  }
   document.addEventListener("keydown",(e)=>{ if(e.key==="/" && !e.metaKey && !e.ctrlKey && !e.altKey
     && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||"")
     && location.pathname!=="/search"){ e.preventDefault(); go("/search"); } });
@@ -347,6 +381,7 @@ const App = (() => {
     if(nextMeet)   bits.push(`<b>${nextMeet}</b> meeting${nextMeet>1?"s":""} on the books`);
     bits.push(`<b>${all.length}</b> in your book`);
     setSubline(`${owe.length} owe a reply${nextMeet?` · ${nextMeet} upcoming`:""}`);
+    setRailBadge("crm", owe.length);
 
     const figs=[
       {n:all.length,c:"Contacts",col:"var(--ink)",f:"all"},
@@ -1200,6 +1235,7 @@ const App = (() => {
   function paintReview(b){
     _rvData=b;
     const all=reviewBuild(b); all.forEach((it,i)=>it._i=i); _rvItems=all;
+    setRailBadge("review", all.length);
     const counts={reply:0,todo:0,triage:0,idea:0,promote:0};
     all.forEach(it=>counts[it.type]=(counts[it.type]||0)+1);
     const now=new Date();
