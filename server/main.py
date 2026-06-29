@@ -31,7 +31,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import backup, email_login, setup_service, storage, tunnel
@@ -1183,8 +1183,39 @@ async def action_draft(request: Request) -> JSONResponse:
 # --------------------------------------------------------------------------- #
 # Web UI — setup gate + SPA (served last so /api/* wins)
 # --------------------------------------------------------------------------- #
-def _spa() -> FileResponse:
-    return FileResponse(WEB_DIR / "index.html")
+_WEB_VER = {"sig": -1.0, "ver": "1"}
+
+
+def _asset_version() -> str:
+    """Cache-busting token that changes whenever app.js/styles.css change. Cloudflare's edge
+    caches .js/.css for hours regardless of our no-cache header, so versioned URLs (a fresh
+    URL per deploy) are the only reliable way to push new UI to already-loaded browsers."""
+    try:
+        import hashlib
+        sig = 0.0
+        for n in ("app.js", "styles.css"):
+            p = WEB_DIR / n
+            if p.exists():
+                sig += p.stat().st_mtime
+        if sig != _WEB_VER["sig"]:
+            _WEB_VER["sig"] = sig
+            _WEB_VER["ver"] = hashlib.md5(str(sig).encode()).hexdigest()[:8]
+        return _WEB_VER["ver"]
+    except Exception:
+        return "1"
+
+
+def _spa() -> HTMLResponse | FileResponse:
+    """Serve the shell with versioned asset URLs so every deploy busts the browser/edge cache.
+    The shell itself is always revalidated (no-cache), so the new version always reaches clients."""
+    try:
+        html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+        v = _asset_version()
+        html = html.replace('href="/styles.css"', f'href="/styles.css?v={v}"')
+        html = html.replace('src="/app.js"', f'src="/app.js?v={v}"')
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate"})
+    except Exception:
+        return FileResponse(WEB_DIR / "index.html")
 
 
 def _setup_page() -> FileResponse:
