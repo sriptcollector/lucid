@@ -256,10 +256,10 @@ const App = (() => {
   function openCapture(){
     const wrap=document.createElement("div"); wrap.className="capwrap";
     wrap.innerHTML=`<div class="capbg"></div><div class="capmodal" role="dialog" aria-modal="true">
-      <div class="caphead"><span class="capdot"></span><b>Capture</b><span class="capsub" id="capSub">Record or upload a conversation</span><button class="capx" aria-label="Close">&#10005;</button></div>
+      <div class="caphead"><span class="capmdot"></span><b>Capture</b><span class="capsub" id="capSub">Record or upload a conversation</span><button class="capx" aria-label="Close">&#10005;</button></div>
       <div class="capbody" id="capBody"><div class="capchoose">
-        <button class="capbtn" id="capRec"><span class="capglyph">&#9679;</span>Record now</button>
-        <button class="capbtn" id="capUp"><span class="capglyph">&#8593;</span>Upload audio</button>
+        <button class="capchoice" id="capRec"><span class="capglyph">&#9679;</span>Record now</button>
+        <button class="capchoice" id="capUp"><span class="capglyph">&#8593;</span>Upload audio</button>
       </div></div></div>`;
     document.body.appendChild(wrap); document.body.style.overflow="hidden";
     let _mr=null,_chunks=[],_poll=null,_ti=null;
@@ -343,7 +343,8 @@ const App = (() => {
 
   const agoLabel=(m)=>{ if(m==null) return ""; if(m<1.5) return "Updated just now";
     if(m<60) return "Updated "+Math.round(m)+"m ago"; const hh=Math.round(m/60);
-    return "Updated "+hh+"h ago"; };
+    if(hh<48) return "Updated "+hh+"h ago";
+    return "Updated "+Math.round(hh/24)+"d ago"; };
   let _crmPoll=null;
   async function crmRefresh(manual){
     clearTimeout(_crmPoll);
@@ -714,13 +715,17 @@ const App = (() => {
     const CATS=[{k:"all",l:"All"},{k:"work",l:"Work"},{k:"mental",l:"Mental"},{k:"other",l:"Other"}];
     const catbar=recs.length?`<div class="filterbar catbar">
       ${CATS.map(c=>`<button class="fchip${noteCat===c.k?" on":""}" data-cat="${c.k}">${c.l}</button>`).join("")}</div>`:"";
-    const tools=recs.length?`<div class="ptools secrow"><button class="btn ghost" id="noteSelBtn">${hubSel.mode&&hubSel.type==="note"?"Done":"Select"}</button></div>`:"";
+    const tools=recs.length?`<button class="btn ghost selbtn" id="noteSelBtn">${hubSel.mode&&hubSel.type==="note"?"Done":"Select"}</button>`:"";
     const search=recs.length?secSearchHTML("notes","Search notes…"):"";
 
+    // Search + filters lead, the stat ribbon trails (hidden on phones) — so actual
+    // notes are visible above the fold instead of a full screen of controls.
     app.innerHTML=`<div class="view notes-feed">
       ${masthead({title:`Notes <span class="count">${done.length} sorted</span>`, note:ed})}
-      ${recs.length?`<div class="figrow">${ribbon}</div>`:""}
-      ${filterbar}${catbar}${tools}${search}${body}${hubSelBar()}</div>`;
+      ${search}
+      ${filterbar}${catbar?catbar.replace(/<\/div>$/,tools+"</div>"):tools}
+      ${recs.length?`<div class="figrow figrow-trail">${ribbon}</div>`:""}
+      ${body}${hubSelBar()}</div>`;
     paintDone();
     bindCards();
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
@@ -2144,10 +2149,11 @@ const App = (() => {
     const people=a.people||[], plans=a.plans||[], commits=a.commitments||[],
       psy=a.psychological_dynamics||[], rels=a.relationship_dynamics||[], quotes=a.notable_quotes||[];
     return `
-      <div class="panel"><h2>Copy session summary</h2>
+      <div class="panel"><h2>The gist</h2><p class="lead">${h(a.summary)}</p>
+        ${a.sentiment?`<div class="arc">◡ ${h(a.sentiment)}</div>`:""}
         <div class="copyrow"><button class="btn" data-copy-summary>&#9106; Copy everything</button>
           <span class="muted" style="font-size:12px">clean text · every detail</span></div>
-        <textarea class="summarybox" readonly>${h(summaryText(current))}</textarea></div>
+        <textarea class="summarybox" readonly aria-label="Full session summary as plain text">${h(summaryText(current))}</textarea></div>
 
       ${people.length?`<div class="panel"><h2>People · tap to explore</h2>
         ${people.map((p,i)=>{const nm=p.name||p.label; return `<div class="person">
@@ -2157,9 +2163,6 @@ const App = (() => {
           ${(p.identity_quotes||[]).slice(0,1).map(q=>`<div class="pquote${q.t!=null?" tap":""}"${q.t!=null?` data-proof="${q.t}" data-qt="${attr(q.text)}"`:""}>“${h(q.text)}”</div>`).join("")}
           <button class="pview" data-person="${i}">Quotes &amp; psychology ›</button>
         </div>`;}).join("")}</div>`:""}
-
-      <div class="panel"><h2>The gist</h2><p class="lead">${h(a.summary)}</p>
-        ${a.sentiment?`<div class="arc">◡ ${h(a.sentiment)}</div>`:""}</div>
 
       ${(a.ideas||[]).length?`<div class="panel"><h2>Ideas &amp; perspectives</h2>
         ${a.ideas.map(i=>{const st=(i.status||"").replace(/\s+/g,"-"); return `<div class="idea${i.t!=null?" tap":""}"${seekAttr(i.t)}>
