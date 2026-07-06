@@ -1398,3 +1398,11 @@ button.statcard:active{transform:scale(.985)}
   .carddel{min-width:44px;min-height:44px;display:grid;place-items:center}
   .capx{min-width:44px;min-height:44px}
 }
+
+/* phones: queue rows stack their actions full-width below the content —
+   three buttons never squeeze the name into a one-word-per-line column */
+@media (max-width:640px){
+  .rvitem{grid-template-columns:auto 1fr}
+  .rvitem .rv-act{grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end;margin-top:2px}
+  .rvitem .rv-kind{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}

@@ -50,9 +50,8 @@ const App = (() => {
     b.onclick = ()=>{ workOnly=!workOnly; localStorage.setItem("lucid_all", workOnly?"0":"1"); bindWorkBtn();
       const p=location.pathname;
       if(p==="/" && brief) paintBrief();
-      else if(p==="/review" && _rvData) paintReview(_rvData);
       else if(p==="/lucid/notes" && cache.length) paintNotes();
-      else if(["/","/review","/lucid/notes"].includes(p)) route(); };
+      else if(["/","/lucid/notes"].includes(p)) route(); };
   }
 
   // helpers
@@ -148,9 +147,9 @@ const App = (() => {
     document.querySelectorAll(".appbar [data-nav]").forEach(b=>{ const on=b.dataset.nav===n;
       b.classList.toggle("on",on); on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current"); });
   };
-  // mirror a count onto the rail's CRM / Review badge
+  // mirror a count onto the rail's Today / CRM badge
   function setRailBadge(tab, n){
-    const el=document.getElementById(tab==="crm"?"railCrmBadge":"railReviewBadge");
+    const el=document.getElementById(tab==="crm"?"railCrmBadge":"railTodayBadge");
     if(!el) return; const v=Number(n)||0;
     if(v>0){ el.textContent=String(v); el.hidden=false; } else { el.textContent=""; el.hidden=true; }
   }
@@ -174,8 +173,11 @@ const App = (() => {
     const _ry=_pendingScrollY; _pendingScrollY=null; _scrollTarget=null;
     if(_ry==null) window.scrollTo(0,0); else _scrollTarget=_ry;
     const p=location.pathname;
-    // Old top-level routes fold into the Lucid hub — old links/bookmarks keep working.
-    const RD={"/notes":"/lucid/notes","/people":"/lucid/people","/directory":"/lucid/directory","/ventures":"/lucid/ideas"};
+    // Old top-level routes fold into the hub; retired tabs (Journal/Review/Ideas/Projects)
+    // land on their nearest surviving surface — old links/bookmarks keep working.
+    const RD={"/notes":"/lucid/notes","/people":"/lucid/people","/directory":"/lucid/directory",
+              "/ventures":"/lucid/notes","/journal":"/lucid/notes","/review":"/",
+              "/lucid/ideas":"/lucid/notes","/lucid/projects":"/lucid/notes"};
     if (RD[p]){ history.replaceState({},"",RD[p]); return route(); }
     // Detail views — Lucid tab stays lit, hub switcher hidden.
     const m=p.match(/^\/r\/([\w-]+)/);
@@ -192,9 +194,7 @@ const App = (() => {
       setLucidSeg(seg); return SEG_RENDER[seg](); }
     // Tools + other domains hide the hub switcher.
     showLucidBar(false);
-    if (p==="/journal"){ setTab("journal"); return showJournal(); }
     if (p==="/search"){ setTab("search"); return showSearch(); }
-    if (p==="/review"){ setTab("review"); return showReview(); }
     if (p==="/settings"){ setTab("settings"); return showSettings(); }
     const cm=p.match(/^\/crm\/(.+)$/);
     if (cm){ setTab("crm"); return showCRMContact(decodeURIComponent(cm[1])); }
@@ -230,8 +230,8 @@ const App = (() => {
   }
 
   // ===== LUCID HUB — Notes · People · Ideas under one tab =====
-  const LUCID_SEGS=["notes","people","ideas","projects"];
-  const SEG_RENDER={notes:showNotes, people:showPeople, ideas:showVentures, projects:showProjects};
+  const LUCID_SEGS=["notes","people"];
+  const SEG_RENDER={notes:showNotes, people:showPeople};
   let lucidSeg=(()=>{ const s=localStorage.getItem("lucid_seg"); return LUCID_SEGS.includes(s)?s:"notes"; })();
   const lucidbarEl=document.getElementById("lucidbar");
   function setLucidSeg(seg){
@@ -369,7 +369,7 @@ const App = (() => {
   }
 
   async function showCRM(){
-    app.innerHTML=`<div class="view"><div class="hero"><div class="skhero shimmer"></div></div>${statSkel(5)}${skeletons(3)}</div>`;
+    app.innerHTML=`<div class="view"><div class="hero"><div class="skhero shimmer"></div></div>${skeletons(3)}</div>`;
     let d; try { d=await api("/api/crm/board"); } catch(e){ return authOrError(e,showCRM); }
     crmData=d; document.getElementById("subline").textContent="CRM";
     paintCRM();
@@ -429,17 +429,6 @@ const App = (() => {
     setSubline(`${owe.length} owe a reply${nextMeet?` · ${nextMeet} upcoming`:""}`);
     setRailBadge("crm", owe.length);
 
-    const figs=[
-      {n:all.length,c:"Contacts",col:"var(--ink)",f:"all"},
-      {n:s.clients||0,c:"Clients",col:"var(--pos)",f:"client"},
-      {n:s.leads||0,c:"Leads",col:"var(--accent)",f:"lead"},
-      {n:s.network||0,c:"Network",col:"var(--neu)",f:"network"},
-      {n:owe.length,c:"Owe a reply",col:"var(--accent)",scroll:true},
-    ];
-    const ribbon=figs.map(f=>`<button class="statcard${(!f.scroll&&crmFilter===f.f)?" on":""}"
-      ${f.scroll?`data-scroll="owelane"`:`data-f="${f.f}"`} style="--mc:${f.col}">
-      <span class="figure">${f.n}</span><span class="figcap">${f.c}</span></button>`).join("");
-
     const oweHTML=owe.length?`<div class="owelane" id="owelane">
       <div class="lanehead">Owe a reply <span class="n">${owe.length}</span></div>
       ${owe.map(oweRow).join("")}</div>`:"";
@@ -485,7 +474,6 @@ const App = (() => {
         <h1>CRM <span class="count">${all.length} contacts</span></h1>
         <div class="ednote">Your book of business, fresh this morning — ${bits.join(" · ")}.</div>
       </div>
-      <div class="figrow">${ribbon}</div>
       ${dupHTML}
       ${oweHTML}
       <div class="filterbar">${chips}</div>
@@ -505,10 +493,7 @@ const App = (() => {
     app.querySelectorAll(".duprow [data-notdup]").forEach(b=>b.onclick=(e)=>{
       e.stopPropagation(); const row=b.closest(".duprow"); dismissDupe(row.dataset.pk); row.remove(); });
 
-    app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
     const rf=document.getElementById("crmRefresh"); if(rf) rf.onclick=()=>crmRefresh(true);
-    const sc=app.querySelector('.statcard[data-scroll]');
-    if(sc) sc.onclick=()=>{const el=document.getElementById("owelane"); if(el) el.scrollIntoView({behavior:"smooth",block:"start"});};
     app.querySelectorAll(".filterbar .fchip").forEach(b=>b.onclick=()=>{crmFilter=b.dataset.f;paintCRM();});
     app.querySelectorAll(".crmcard").forEach(c=>c.onclick=()=>go("/crm/"+encodeURIComponent(c.dataset.email)));
     app.querySelectorAll(".owerow").forEach(r=>r.onclick=()=>go("/crm/"+encodeURIComponent(r.dataset.email)));
@@ -641,7 +626,6 @@ const App = (() => {
   async function showNotes(){
     if (!cache.length) app.innerHTML=`<div class="view notes-feed">
       ${masthead({title:"Notes"})}
-      ${statSkel(4)}
       ${skeletons()}</div>`;
     let recs; try { recs=await api("/api/recordings"); } catch(e){ return authOrError(e,showNotes); }
     if(_pendingDel) recs=recs.filter(r=>r.id!==_pendingDel.id); cache=recs; paintNotes();
@@ -724,7 +708,6 @@ const App = (() => {
       ${masthead({title:`Notes <span class="count">${done.length} sorted</span>`, note:ed})}
       ${search}
       ${filterbar}${catbar?catbar.replace(/<\/div>$/,tools+"</div>"):tools}
-      ${recs.length?`<div class="figrow figrow-trail">${ribbon}</div>`:""}
       ${body}${hubSelBar()}</div>`;
     paintDone();
     bindCards();
@@ -796,7 +779,6 @@ const App = (() => {
   async function showHome(){
     setTab("home");
     if (!brief) app.innerHTML=`<div class="view view--wide brief">${masthead({title:"The Brief",wide:true})}
-      ${statSkel(6)}
       ${skeletons(2)}</div>`;
     const failed=[];
     const grab=(p,l)=>api(p).then(r=>r).catch(()=>{ failed.push(l); return null; });
@@ -814,44 +796,7 @@ const App = (() => {
     if (recs.some(r=>!["done","error"].includes(r.status))) pollTimer=setTimeout(showHome,5000);
   }
 
-  function needsYou(b){
-    const out=[], seen=briefSeen(), dt=doneTodos();
-    const clear=(msg)=>{ paintBrief(); toast(msg||"Marked read"); };
-    (b.crm.contacts||[]).filter(crmOwe).forEach(c=>{ const d=!!c.draft, id="reply:"+c.email+":"+(Date.parse(c.last_ts)||0);
-      out.push({ id, domain:stageColor(c), mark:"✎", sort:d?0:1,
-        kind:d?"Draft ready":(c.action==="follow_up"?"Follow up":"Reply"),
-        title:c.name||c.company||c.email, sub:c.situation||c.summary||"",
-        cta:d?"Copy draft":"Open", copy:d?c.draft:"", go:()=>go("/crm/"+encodeURIComponent(c.email)),
-        done:()=>{ markBrief(id); logActivity("read","Reply",c.name||c.company||c.email,"lucid_seen_brief",id); clear(); } }); });
-    (b.recs||[]).filter(r=>r.status==="done"&&mood(r).k==="tense"&&keepRec(r)).slice(0,4).forEach(r=>{ const id="tense:"+r.id;
-      out.push({ id, domain:"var(--ten)", mark:"△", sort:2, kind:"Tense note",
-        title:r.headline||"Conversation", sub:r.summary||"", cta:"Review", go:()=>go("/r/"+r.id),
-        done:()=>{ markSeen(r.id); markBrief(id); logActivity("read","Tense note",r.headline||"Conversation",[{store:"lucid_seen_brief",sid:id},{store:"lucid_seen_notes",sid:r.id}]); clear(); } }); });
-    (b.vens||[]).filter(v=>!v.has_spec).slice(0,3).forEach(v=>{ const id="idea:"+v.id;
-      out.push({ id, domain:"var(--topic)", mark:"◆", sort:3, kind:"Idea",
-        title:v.title, sub:v.summary||"No build plan yet", cta:"Open idea",
-        go:()=>go("/ventures/"+encodeURIComponent(v.id)),
-        done:()=>{ markBrief(id); logActivity("read","Idea",v.title,"lucid_seen_brief",id); clear(); } }); });
-    (b.tasks||[]).filter(keepAi).forEach(t=>{ const key=todoId(t), id="todo:"+key; if(dt.has(key)) return;
-      out.push({ id, domain:"var(--pos)", mark:"□", sort:4, kind:"To-do", title:t.text,
-        sub:[t.owner?("— "+t.owner):"", t.due?("due "+t.due):"", t.note_headline].filter(Boolean).join(" · "),
-        cta:"Open", go:()=>go("/r/"+t.note_id),
-        done:()=>{ markTodoDone(key); markBrief(id); logActivity("done","To-do",t.text,[{store:"lucid_done_todos",sid:key},{store:"lucid_seen_brief",sid:"todo:"+key}]); clear("Done ✓"); } }); });
-    return out.filter(it=>!seen.has(it.id)).sort((a,c)=>a.sort-c.sort);
-  }
-  function figures(b){
-    const recsK=b.recs.filter(keepRec), done=recsK.filter(r=>r.status==="done"), s=b.crm.stats||{};
-    const mins=Math.round(done.reduce((a,r)=>a+(r.duration||0),0)/60);
-    const dt=doneTodos();
-    const openTodos=(b.tasks||[]).filter(keepAi).filter(t=>!dt.has(todoId(t))).length;
-    return [
-      {n:recsK.length,  cap:"Notes",        domain:"var(--ink)",      go:()=>go("/notes")},
-      {n:b.ppl.length,  cap:"People",        domain:"var(--accent)",   go:()=>go("/people")},
-      {n:openTodos,     cap:"Open to-dos",   domain:"var(--pos)",      go:()=>go("/review")},
-      {n:s.leads||0,    cap:"Leads",         domain:"var(--accent)",   go:()=>go("/crm")},
-      {n:s.clients||0,  cap:"Clients",       domain:"var(--pos)",      go:()=>go("/crm")},
-      {n:mins,          cap:"Min captured",  domain:"var(--decision)", go:()=>go("/notes")} ];
-  }
+  let _qExpand={};   // per-session "Show N more" state for the Today queue buckets
   function agenda(b){ const now=Date.now();
     return (b.crm.contacts||[]).filter(c=>c.next_meeting).map(c=>({
         when:new Date(c.next_meeting), name:c.company||c.name, who:c.name,
@@ -879,37 +824,43 @@ const App = (() => {
         </div></div>`;
       setSubline("welcome"); bindBrief(); paintDone(); return;
     }
-    const items=needsYou(b), up=agenda(b);
+    // ONE queue, one source of truth: the review engine feeds Today directly.
+    _rvData=b;
+    const all=reviewBuild(b); all.forEach((it,i)=>it._i=i); _rvItems=all;
+    const up=agenda(b);
     const _failed=b._failed||[];
-    const dt=doneTodos();
-    const openTodos=(b.tasks||[]).filter(keepAi).filter(t=>!dt.has(todoId(t))).length;
-    const owe = items.filter(it=>it.id.startsWith("reply:")).length;
+    const counts={reply:0,todo:0,triage:0,promote:0};
+    all.forEach(it=>counts[it.type]=(counts[it.type]||0)+1);
+    const nNow=all.filter(it=>it.score>=66).length;
+    setRailBadge("home", nNow);
     const today=new Date().toDateString();
     const mtgs=(b.crm.contacts||[]).filter(c=>c.next_meeting&&new Date(c.next_meeting).toDateString()===today).length;
 
     const bits=[];
-    if(owe)  bits.push(`<b>${owe}</b> ${owe>1?"people owe":"person owes"} you a reply`);
+    if(counts.reply) bits.push(`<b>${counts.reply}</b> ${counts.reply>1?"people owe":"person owes"} you a reply`);
     if(mtgs) bits.push(`<b>${mtgs}</b> meeting${mtgs>1?"s":""} today`);
-    if(openTodos) bits.push(`<b>${openTodos}</b> open to-do${openTodos>1?"s":""}`);
+    if(counts.todo) bits.push(`<b>${counts.todo}</b> open to-do${counts.todo>1?"s":""}`);
+    if(counts.triage) bits.push(`<b>${counts.triage}</b> to review`);
     const ed=bits.length?bits.join(" · ")
       :(_failed.length?`Couldn't load ${h(_failed.join(", "))} — some of your day may be missing.`
         :"You're all caught up. Nothing needs you right now.");
-    setSubline(bits.length?[owe&&owe+" need you", mtgs&&mtgs+" today", openTodos&&openTodos+" to-dos"]
+    setSubline(bits.length?[nNow&&nNow+" now", counts.reply&&counts.reply+" owed", counts.todo&&counts.todo+" to-dos"]
         .filter(Boolean).join(" · "):"all clear");
 
-    const ribbon=figures(b).map(f=>`<div class="statcard" style="--domain:${f.domain}" ${actAttr(f.go)}>
-        <span class="figure">${f.n}</span><span class="figcap">${h(f.cap)}</span></div>`).join("");
-
-    const queue=items.length ? items.slice(0,8).map(it=>`<div class="qrow" style="--domain:${it.domain}" ${actAttr(it.go)}>
-        <span class="qmark">${it.mark}</span>
-        <div class="qmain"><div class="qkind">${h(it.kind)}</div>
-          <div class="qtitle">${h(it.title)}</div>${it.sub?`<div class="qsub">${h(it.sub)}</div>`:""}</div>
-        <div class="qacts">
-          ${it.copy?`<button class="qcta solid" ${actAttr(copyDraft(it.copy))}>${h(it.cta)}</button>`
-                   :`<button class="qcta" ${actAttr(it.go)}>${h(it.cta)}</button>`}
-          ${it.done?`<button class="qread" title="Mark as read" aria-label="Mark as read" ${actAttr(it.done)}>✓</button>`:""}
-        </div></div>`).join("")
-      : `<div class="allclear"><b>Clear desk.</b> No replies owed, no tense notes, every idea has a plan.</div>`;
+    const queue = all.length ? RV_BUCKETS.map(bk=>{
+        const rows=all.filter(it=>bk.test(it.score)); if(!rows.length) return "";
+        const cap=bk.k==="now"?Infinity:(_qExpand[bk.k]?Infinity:(bk.k==="soon"?8:4));
+        const shown=rows.slice(0,cap), extra=rows.length-shown.length;
+        return `<div class="daygroup rvbucket rvb-${bk.k}">
+          <div class="daylabel">${bk.label}<span class="n">${rows.length}</span></div>
+          <div class="rvqueue">${shown.map(rvRow).join("")}</div>
+          ${extra>0?`<button class="seeall qmore" data-more="${bk.k}">Show ${extra} more →</button>`:""}</div>`;
+      }).join("")
+      : `<div class="allclear"><b>Clear desk.</b> No replies owed, nothing to review.</div>`;
+    const dt=doneTodos();
+    const doneN=(b.tasks||[]).filter(t=>dt.has(todoId(t))).length;
+    const doneBar = doneN ? `<div class="rv-donebar"><span>✓ ${doneN} to-do${doneN>1?"s":""} done today</span>
+      <button class="rv-undo" id="rvUndo">Undo last</button></div>` : "";
 
     const todayRail = up.length
       ? `<div class="todayrail">${up.map(e=>`<div class="evpill" style="--domain:${e.domain}" ${actAttr(e.go)}>
@@ -925,8 +876,8 @@ const App = (() => {
       <div class="vkey"><span><i style="background:var(--pos)"></i>${s.clients||0} clients</span>
         <span><i style="background:var(--accent)"></i>${s.leads||0} leads</span>
         <span><i style="background:var(--neu)"></i>${s.network||0} network</span></div>
-      ${owe?`<div class="minirow" style="--domain:var(--accent)" ${actAttr(()=>go("/crm"))}>
-        <span class="spinedot"></span><div class="mtxt"><div class="mt1">${owe} awaiting your reply</div>
+      ${counts.reply?`<div class="minirow" style="--domain:var(--accent)" ${actAttr(()=>go("/crm"))}>
+        <span class="spinedot"></span><div class="mtxt"><div class="mt1">${counts.reply} awaiting your reply</div>
         <div class="mt2">Top of your CRM queue</div></div><span class="mtime">→</span></div>`:""}`;
 
     const empty=(t)=>`<div class="mt2" style="padding:8px 0">${t}</div>`;
@@ -944,11 +895,6 @@ const App = (() => {
         <div class="mt2">${trendWord(p.trend)} · ${p.interactions} talk${p.interactions>1?"s":""}</div></div>
         <span class="mtime">${h(rel(p.last_seen))}</span></div>`).join("")||empty("No people yet.");
 
-    const ideas=b.vens.slice(0,3).map(v=>`<div class="minirow" data-ctx="idea:${h(v.id)}" style="--domain:var(--topic)" ${actAttr(()=>go("/ventures/"+encodeURIComponent(v.id)))}>
-        <span class="spinedot"></span><div class="mtxt"><div class="mt1">${h(v.title)}</div>
-        <div class="mt2">${v.has_spec?"Plan ready":"No plan yet"}${v.status?(" · "+h(v.status)):""}</div></div>
-        ${v.has_spec?`<span class="mtime">✓</span>`:""}</div>`).join("")||empty("No ideas yet.");
-
     const _railX = app.querySelector('.todayrail')?.scrollLeft || 0;
     const failBanner = (_failed.length && !brief._failHidden) ? `<div class="panel" id="briefWarn" style="display:flex;align-items:center;gap:12px;border-color:var(--ten)">
       <span style="flex:1;font-size:14px;color:var(--ink-soft)">Couldn't load ${h(_failed.join(", "))} — some of your day may be missing.</span>
@@ -957,29 +903,67 @@ const App = (() => {
     app.innerHTML=`<div class="view view--wide brief">
       ${masthead({title:`${greet}${who?(", "+h(who)):""}.`, note:ed, wide:true})}
       ${failBanner}
-      <button class="reviewcta" ${actAttr(()=>go("/review"))}>
-        <span class="rc-ic">◴</span>
-        <span class="rc-txt"><b>The day in review</b>
-          <span>Today's notes, replies, to-dos &amp; people seen</span></span>
-        <span class="rc-go">→</span></button>
-      <div class="figrow">${ribbon}</div>
       <div class="deck">
-        <div class="panel sp-7"><h2>Needs you${items.length?`<span class="hcount">${items.length}</span>`:""}</h2>
-          <div class="queue">${queue}</div></div>
+        <div class="panel sp-7"><h2>Needs you${all.length?`<span class="hcount">${all.length}</span>`:""}</h2>
+          <div class="queue">${queue}${doneBar}</div></div>
         <div class="sp-5 railcol">
           <div class="panel"><h2>Today</h2>${todayRail}</div>
           <div class="panel"><h2>Pipeline</h2>${pipeline}</div>
         </div>
-        <div class="panel sp-4"><h2>Latest notes</h2>${latest}
+        <div class="panel sp-6"><h2>Latest notes</h2>${latest}
           <span class="seeall" ${actAttr(()=>go("/notes"))}>All notes →</span></div>
-        <div class="panel sp-4"><h2>People to nurture</h2>${nurture}
+        <div class="panel sp-6"><h2>People to nurture</h2>${nurture}
           <span class="seeall" ${actAttr(()=>go("/people"))}>All people →</span></div>
-        <div class="panel sp-4"><h2>Ideas in motion</h2>${ideas}
-          <span class="seeall" ${actAttr(()=>go("/ventures"))}>All ideas →</span></div>
       </div></div>`;
     paintDone();
     const _r = app.querySelector('.todayrail'); if(_r && _railX) _r.scrollLeft=_railX;
+    app.querySelectorAll(".qmore").forEach(btn=>btn.onclick=()=>{ _qExpand[btn.dataset.more]=true; paintBrief(); });
+    const ub=document.getElementById("rvUndo");
+    if(ub) ub.onclick=()=>{ const log=_lsGet("lucid_activity");
+      const i=log.findIndex(e=>e.type==="done"&&(e.store==="lucid_done_todos"||(e.stores||[]).some(s=>s.store==="lucid_done_todos")));
+      if(i<0){ toast("Nothing to undo"); return; }
+      undoActivity(i); toast("Undone"); paintBrief(); };
+    bindQueueRows();
     bindBrief();
+  }
+
+  // shared binder for queue rows (rvitem) — Today owns the queue now
+  function repaintQueue(){ if(location.pathname==="/" && brief) paintBrief(); }
+  // One-tap send with honest friction: first tap arms ("Send to X?"), second tap sends
+  // the Gmail draft for real via orionscrm. Irreversible, so it asks once — inline.
+  async function sendDraft(c, rid, row, btn){
+    if(!btn) return;
+    if(btn.dataset.armed!=="1"){
+      btn.dataset.armed="1"; btn.dataset.label=btn.textContent;
+      btn.textContent=`Send to ${(c.name||c.email).split(/\s+/)[0]}?`;
+      setTimeout(()=>{ if(btn.isConnected&&btn.dataset.armed==="1"){ btn.dataset.armed=""; btn.textContent=btn.dataset.label; } }, 4000);
+      return;
+    }
+    btn.disabled=true; btn.innerHTML='<span class="spin"></span>Sending…';
+    let res;
+    try{ res=await api("/api/crm/board/act",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({email:c.email, action:"send"})}); }
+    catch(e){ res=null; }
+    if(!res || !res.ok){
+      btn.disabled=false; btn.dataset.armed=""; btn.textContent=btn.dataset.label||"Send →";
+      toast((res&&res.detail)?res.detail:"Couldn't send — open the thread instead"); return;
+    }
+    markBrief(rid); logActivity("done","Sent reply",c.name||c.company||c.email,"lucid_seen_brief",rid);
+    toast(`Sent to ${c.name||c.email} ✓`); haptic();
+    if(_rvData&&_rvData.crm&&_rvData.crm.contacts)
+      _rvData.crm.contacts.forEach(x=>{ if(x.email===c.email){ x.draft=""; x.reply_owed=false; } });
+    collapseRow(row, repaintQueue);
+  }
+  function bindQueueRows(){
+    app.querySelectorAll(".rvitem").forEach(row=>{ const it=_rvItems[+row.dataset.i]; if(!it) return;
+      const main=row.querySelector(".rv-main");
+      if(main) main.onclick=()=>{ if(it.seenId){ it.dismiss?it.dismiss():markSeen(it.seenId); } it.open&&it.open(); };
+      row.querySelectorAll(".rv-cta[data-act]").forEach(btn=>btn.onclick=(e)=>{
+        e.stopPropagation(); const a=it.actions[+btn.dataset.act]; if(a&&a.run) a.run(row,btn); });
+      const dz=row.querySelector("[data-dismiss]");
+      if(dz) dz.onclick=(e)=>{ e.stopPropagation(); if(row.dataset.busy) return; row.dataset.busy="1";
+        dz.classList.add("done"); haptic();
+        if(it.dismiss) it.dismiss(); toast("Marked read"); collapseRow(row, repaintQueue); }; });
   }
 
   // ===== UNIFIED SEARCH (notes · people · ideas · CRM contacts) =====
@@ -1159,25 +1143,6 @@ const App = (() => {
   const clearActivity=()=>_lsSet("lucid_activity",[]);
   const markTodoDone=(key)=>{ const s=new Set(_lsGet("lucid_done_todos")); s.add(key); _lsSet("lucid_done_todos",[...s]); };
 
-  async function showReview(){
-    setTab("review");
-    app.innerHTML=`<div class="view view--wide review2">
-      ${masthead({title:"Review", wide:true})}
-      ${statSkel(5)}
-      ${skeletons(3)}</div>`;
-    const failed=[];
-    const grab=(p,l)=>api(p).then(r=>r).catch(()=>{ failed.push(l); return null; });
-    const othersP=Promise.all([
-      grab("/api/crm/board","CRM"), grab("/api/data/action-items","To-dos"), grab("/api/ventures","Ideas")]);
-    let recs; try{ recs = cache.length ? cache : await api("/api/recordings"); }
-    catch(e){ return authOrError(e,showReview); }
-    cache=recs;
-    const [crm,tasks,vens]=await othersP;
-    const board=(crm&&!crm.missing)?crm:{contacts:[],stats:{},review:[]};
-    crmData=board;
-    paintReview({ recs, crm:board, tasks:(tasks&&tasks.action_items)||[], vens:vens||[], _failed:failed });
-  }
-
   function reviewBuild(b){
     const now=Date.now(), today=new Date().toDateString();
     const isToday=(iso)=>{ const d=new Date(iso); return !isNaN(d)&&d.toDateString()===today; };
@@ -1195,8 +1160,9 @@ const App = (() => {
         time: relTs(c.last_ts||now),
         open:()=>go("/crm/"+encodeURIComponent(c.email)),
         dismiss:()=>{ markBrief(rid); logActivity("read","Reply",c.name||c.company||c.email,"lucid_seen_brief",rid); },
-        actions:[ draft ? {label:"Copy draft", primary:true, run:copyDraft(c.draft)}
-          : {label:"Reply →", primary:true, run:()=>go("/crm/"+encodeURIComponent(c.email))} ] });
+        actions: draft ? [ {label:"Send →", primary:true, run:(row,btn)=>sendDraft(c,rid,row,btn)},
+                           {label:"Copy", run:copyDraft(c.draft)} ]
+          : [ {label:"Open →", primary:true, run:()=>go("/crm/"+encodeURIComponent(c.email))} ] });
     });
     // 2 — open to-dos (overdue first)
     (b.tasks||[]).filter(keepAi).filter(t=>!done.has(todoId(t))).slice(0,30).forEach(t=>{ const id=todoId(t);
@@ -1232,16 +1198,9 @@ const App = (() => {
         actions:[{label:"Open →", run:()=>{ markSeen(r.id);
           logActivity("read","Note",r.headline||"Untitled","lucid_seen_notes",r.id); go("/r/"+r.id); }}] });
     });
-    // 5 — ideas with no build plan yet
-    (b.vens||[]).filter(v=>!v.has_spec).slice(0,6).forEach(v=>{
-      const iid="idea:"+v.id; if(bseen.has(iid)) return;
-      items.push({ type:"idea", score:40, glyph:"◆", domain:"var(--accent)", kind:"Idea · no build plan",
-        title:v.title, sub:v.summary||"Turn this into a build plan", pills:[], time:v.last_seen?rel(v.last_seen):"",
-        open:()=>go("/ventures/"+encodeURIComponent(v.id)),
-        dismiss:()=>{ markBrief(iid); logActivity("read","Idea",v.title,"lucid_seen_brief",iid); },
-        actions:[{label:"Generate plan", primary:true, gen:true, run:(row)=>generatePlan(v.id,row)}] });
-    });
-    // 6 — CRM skip-queue: promote / dismiss (lowest signal)
+    // (ideas were cut from the queue — an idea backlog is a graveyard, not a to-do;
+    //  ideas stay reachable from notes, search, and /ventures/:id detail pages)
+    // 5 — CRM skip-queue: promote / dismiss (lowest signal)
     (b.crm.review||[]).slice(0,12).forEach(r=>{
       items.push({ type:"promote", score:28, glyph:"＋", domain:"var(--ink-3)", multi:true,
         kind:"Maybe a contact?", title:r.name||r.company||r.email,
@@ -1253,13 +1212,6 @@ const App = (() => {
     return items.sort((a,c)=>c.score-a.score);
   }
 
-  const RV_FILTERS=[
-    {f:"all",   cap:"All",     col:"var(--ink)"},
-    {f:"reply", cap:"Replies", col:"var(--accent)"},
-    {f:"todo",  cap:"To-dos",  col:"var(--positive)"},
-    {f:"triage",cap:"Triage",  col:"var(--critical)"},
-    {f:"idea",  cap:"Ideas",   col:"var(--accent-ink)"},
-  ];
   const RV_BUCKETS=[
     {k:"now",  label:"Decide now",        test:s=>s>=66},
     {k:"soon", label:"Soon",              test:s=>s>=38&&s<66},
@@ -1282,107 +1234,7 @@ const App = (() => {
       <div class="rv-act">${acts}${dismiss}</div></div>`;
   }
 
-  function paintReview(b){
-    _rvData=b;
-    const all=reviewBuild(b); all.forEach((it,i)=>it._i=i); _rvItems=all;
-    setRailBadge("review", all.length);
-    const counts={reply:0,todo:0,triage:0,idea:0,promote:0};
-    all.forEach(it=>counts[it.type]=(counts[it.type]||0)+1);
-    const now=new Date();
-    const nNow=all.filter(it=>it.score>=66).length;
-    const fil = reviewFilter==="all" ? all : all.filter(it=>it.type===reviewFilter);
-    const bits=[];
-    if(counts.reply)  bits.push(`<b>${counts.reply}</b> repl${counts.reply>1?"ies":"y"} owed`);
-    if(counts.todo)   bits.push(`<b>${counts.todo}</b> to-do${counts.todo>1?"s":""}`);
-    if(counts.triage) bits.push(`<b>${counts.triage}</b> to review`);
-    if(counts.idea)   bits.push(`<b>${counts.idea}</b> idea${counts.idea>1?"s":""}`);
-    const _failed=(b&&b._failed)||[];
-    const ed = all.length
-      ? (nNow?`<b>${nNow}</b> need${nNow>1?"":"s"} you now — `:"")+(bits.join(" · ")||"a few odds and ends")+"."
-      : (_failed.length?`Couldn't load ${h(_failed.join(", "))} — some items may be missing.`
-        : "Nothing needs you. You're all caught up.");
-    setSubline(all.length
-      ? [nNow&&nNow+" now", counts.reply&&counts.reply+" owed", counts.todo&&counts.todo+" to-dos"].filter(Boolean).join(" · ")
-      : "all clear");
-    const ribbon=[{f:"all",n:all.length}].concat(RV_FILTERS.slice(1).map(x=>({f:x.f,n:counts[x.f]||0})))
-      .map(x=>{ const def=RV_FILTERS.find(r=>r.f===x.f)||{};
-        return `<button class="statcard${reviewFilter===x.f?" on":""}" data-f="${x.f}" style="--mc:${def.col}">
-          <span class="figure">${x.n}</span><span class="figcap">${h(def.cap)}</span></button>`; }).join("")
-      + `<button class="statcard${reviewFilter==="done"?" on":""}" data-f="done" style="--mc:var(--ink-3)">
-          <span class="figure">${activityLog().length}</span><span class="figcap">Done</span></button>`;
-    let body;
-    if(reviewFilter==="done"){
-      body=renderActivity(activityLog());
-    } else if(!all.length){
-      const filed=(b.recs||[]).filter(r=>r.status==="done"&&new Date(r.created_at).toDateString()===now.toDateString()).length;
-      body=`<div class="rv-empty"><div class="rv-empty-mark">✓</div>
-        <div class="rv-empty-t">Nothing needs you.</div>
-        <div class="rv-empty-s">${filed?`${filed} note${filed>1?"s":""} filed today · no replies owed, every idea has a plan.`:"No replies owed, no open to-dos, every idea has a plan."}</div></div>`;
-    } else if(!fil.length){
-      body=`<div class="rv-empty"><div class="rv-empty-mark" style="color:var(--faint)">◌</div>
-        <div class="rv-empty-t">Clear in this filter.</div>
-        <div class="rv-empty-s">Tap “All” to see everything that wants you.</div></div>`;
-    } else {
-      body=RV_BUCKETS.map(bk=>{ const rows=fil.filter(it=>bk.test(it.score)); if(!rows.length) return "";
-        return `<div class="daygroup rvbucket rvb-${bk.k}">
-          <div class="daylabel">${bk.label}<span class="n">${rows.length}</span></div>
-          <div class="rvqueue">${rows.map(rvRow).join("")}</div></div>`; }).join("");
-    }
-    const dt=doneTodos();
-    const doneN=(b.tasks||[]).filter(t=>dt.has(todoId(t))).length;
-    const doneBar = (reviewFilter!=="done" && doneN) ? `<div class="rv-donebar"><span>✓ ${doneN} to-do${doneN>1?"s":""} done today</span>
-      <button class="rv-undo" id="rvUndo">Undo last</button></div>` : "";
-    const failBanner=(_failed.length && !b._failHidden)?`<div class="panel" id="rvWarn" style="display:flex;align-items:center;gap:12px;border-color:var(--ten)">
-      <span style="flex:1;font-size:14px;color:var(--ink-soft)">Couldn't load ${h(_failed.join(", "))} — some items may be missing.</span>
-      <button class="btn ghost" id="rvWarnRetry">Retry</button>
-      <button class="btn ghost" id="rvWarnX" aria-label="Dismiss">✕</button></div>`:"";
-    app.innerHTML=`<div class="view view--wide review2">
-      ${masthead({title:"Review", note:ed, wide:true})}
-      ${failBanner}
-      <div class="figrow">${ribbon}</div>${body}${doneBar}</div>`;
-    paintDone();
-    const rw=document.getElementById("rvWarnRetry"); if(rw) rw.onclick=()=>showReview();
-    const rx=document.getElementById("rvWarnX"); if(rx) rx.onclick=()=>{ b._failHidden=true; const n=document.getElementById("rvWarn"); if(n) n.remove(); };
-    app.querySelectorAll(".figrow .statcard[data-f]").forEach(s=>s.onclick=()=>{ reviewFilter=s.dataset.f; paintReview(_rvData); });
-    app.querySelectorAll(".rvitem").forEach(row=>{ const it=_rvItems[+row.dataset.i]; if(!it) return;
-      const main=row.querySelector(".rv-main");
-      if(main) main.onclick=()=>{ if(it.seenId){ it.dismiss?it.dismiss():markSeen(it.seenId); } it.open&&it.open(); };
-      row.querySelectorAll(".rv-cta[data-act]").forEach(btn=>btn.onclick=(e)=>{
-        e.stopPropagation(); const a=it.actions[+btn.dataset.act]; if(a&&a.run) a.run(row,btn); });
-      const dz=row.querySelector("[data-dismiss]");
-      if(dz) dz.onclick=(e)=>{ e.stopPropagation(); if(row.dataset.busy) return; row.dataset.busy="1";
-        dz.classList.add("done"); haptic();
-        if(it.dismiss) it.dismiss(); toast("Marked read"); collapseRow(row, ()=>paintReview(_rvData)); }; });
-    const ub=document.getElementById("rvUndo");
-    if(ub) ub.onclick=()=>{ const log=_lsGet("lucid_activity");
-      const i=log.findIndex(e=>e.type==="done"&&(e.store==="lucid_done_todos"||(e.stores||[]).some(s=>s.store==="lucid_done_todos")));
-      if(i<0){ toast("Nothing to undo"); return; }
-      undoActivity(i); toast("Undone"); paintReview(_rvData); };
-    app.querySelectorAll(".actrow [data-undo]").forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); undoActivity(+b.dataset.undo); toast("Restored"); paintReview(_rvData); });
-    const ac=document.getElementById("actClear");
-    if(ac) ac.onclick=()=>{ if(!confirm("Clear your done/read history?")) return; clearActivity(); toast("History cleared"); paintReview(_rvData); };
-  }
-
   function relTs(ts){ try{ return rel(new Date(ts).toISOString()); }catch(_){ return ""; } }
-  function renderActivity(log){
-    if(!log.length) return `<div class="rv-empty"><div class="rv-empty-mark" style="color:var(--faint)">◌</div>
-      <div class="rv-empty-t">Nothing cleared yet.</div>
-      <div class="rv-empty-s">Everything you mark read or done shows up here — with an undo.</div></div>`;
-    const today=new Date().toDateString(), yd=new Date(Date.now()-864e5).toDateString();
-    const dl=(d)=> d===today?"Today":d===yd?"Yesterday":new Date(d).toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
-    const groups={};
-    log.forEach((e,i)=>{ const d=new Date(e.ts).toDateString(); (groups[d]=groups[d]||[]).push(Object.assign({_idx:i},e)); });
-    return Object.keys(groups).map(d=>`<div class="daygroup">
-        <div class="daylabel">${dl(d)}<span class="n">${groups[d].length}</span></div>
-        <div class="rvqueue">${groups[d].map(e=>`<div class="rvitem actrow" style="--domain:${e.type==="done"?"var(--positive)":"var(--ink-3)"}">
-          <span class="rv-chip"><span>${e.type==="done"?"✓":"·"}</span></span>
-          <div class="rv-main"><div class="rv-kind">${h(e.kind)}</div><div class="rv-title">${h(e.title)}</div>
-            <div class="rv-meta"><span class="rv-time">${h(relTs(e.ts))}</span></div></div>
-          ${e.store?`<div class="rv-act"><button class="rv-cta" data-undo="${e._idx}">Undo</button></div>`:""}
-        </div>`).join("")}</div></div>`).join("")
-      + `<div class="rv-donebar"><span>${log.length} cleared</span><button class="rv-undo" id="actClear">Clear history</button></div>`;
-  }
-
   function collapseRow(row, after){
     if(!row){ after&&after(); return; }
     if(matchMedia("(prefers-reduced-motion:reduce)").matches){ after&&after(); return; }
@@ -1395,7 +1247,7 @@ const App = (() => {
     const arr=_lsGet("lucid_done_todos");
     if(!arr.includes(id)){ arr.push(id); _lsSet("lucid_done_todos",arr);
       logActivity("done","To-do",title||"To-do","lucid_done_todos",id); }
-    toast("Done ✓"); haptic(); collapseRow(row, ()=>paintReview(_rvData));
+    toast("Done ✓"); haptic(); collapseRow(row, repaintQueue);
   }
   async function generatePlan(vid,row){
     const btn=row.querySelector('.rv-cta[data-gen]');
@@ -1403,7 +1255,7 @@ const App = (() => {
     try{ await api("/api/ventures/"+encodeURIComponent(vid)+"/build",{method:"POST"}); }
     catch(e){ toast("Couldn't build the plan"); if(btn){ btn.disabled=false; btn.textContent="Generate plan"; } return; }
     (_rvData.vens||[]).forEach(v=>{ if(v.id===vid) v.has_spec=true; });
-    toast("Build plan ready ✓"); collapseRow(row, ()=>paintReview(_rvData));
+    toast("Build plan ready ✓"); collapseRow(row, repaintQueue);
   }
   async function crmPromote(email,action,row){
     try{ await api("/api/crm/board/override",{method:"POST",
@@ -1413,7 +1265,7 @@ const App = (() => {
     if(crmData&&crmData.review)         crmData.review=crmData.review.filter(r=>r.email!==email);
     toast(action==="remove"?"Dismissed":action==="lead"?"Added as lead":"Added as client"); haptic();
     if(action!=="remove" && typeof crmRefresh==="function") crmRefresh(false);
-    collapseRow(row, ()=>paintReview(_rvData));
+    collapseRow(row, repaintQueue);
   }
 
   // ===== PEOPLE (relationships over time) =====
@@ -1462,7 +1314,7 @@ const App = (() => {
   async function showPeople(){
     peopleMode="rel";
     app.innerHTML=`<div class="view view--wide people-board">${masthead({title:"People",wide:true})}${peopleSeg()}
-      ${statSkel(5)}${skeletons(3)}</div>`;
+      ${skeletons(3)}</div>`;
     bindSeg();
     let ppl; try { ppl=await api("/api/people"); } catch(e){ return authOrError(e,showPeople); }
     pplCache=ppl; renderPeople();
@@ -1471,7 +1323,7 @@ const App = (() => {
   async function showDirectory(){
     peopleMode="dir"; selMode=false; sel.clear();
     app.innerHTML=`<div class="view view--wide people-board">${masthead({title:"People",wide:true})}${peopleSeg()}
-      ${statSkel(4,'stats-static')}${skeletons(3)}</div>`;
+      ${skeletons(3)}</div>`;
     bindSeg();
     let dir; try { dir=await api("/api/directory"); } catch(e){ return authOrError(e,showDirectory); }
     dirCache=dir; renderDirectory();
@@ -1525,7 +1377,6 @@ const App = (() => {
     app.innerHTML=`<div class="view view--wide people-board">
       ${masthead({title:`People <span class="count">${dir.length} learned</span>`, note:ed, wide:true})}
       ${peopleSeg()}
-      <div class="figrow stats-static">${ribbon}</div>
       ${body}</div>`;
     paintDone();
     bindSeg();
@@ -1626,7 +1477,6 @@ const App = (() => {
     app.innerHTML=`<div class="view view--wide people-board">
       ${masthead({title:`People <span class="count">${ppl.length}</span>`, note:ed, wide:true})}
       ${peopleSeg()}
-      <div class="figrow">${ribbon}</div>
       ${nudgeHTML}
       ${tools}${sugHTML}
       ${secSearchHTML("people","Search people…")}
@@ -2525,9 +2375,10 @@ const App = (() => {
   async function showSettings(){
     setSubline("Settings");
     app.innerHTML=`<div class="view view--wide settings panel-grid">${masthead({title:"Settings"})}${skeletons(2)}</div>`;
-    let st={}, sys={systems:[]}, crm={}, cal={}, dk={}, vp={enrolled:[]};
+    let st={}, sys={systems:[]}, crm={}, cal={}, dk={}, vp={enrolled:[]}, hlt=null;
     try { st=await api("/api/settings"); } catch(e){ return authOrError(e,showSettings); }
     try { sys=await api("/api/systems"); } catch(e){}
+    try { hlt=await api("/api/system/health"); } catch(e){}
     try { crm=await api("/api/crm/status"); } catch(e){}
     try { cal=await api("/api/cal/status"); } catch(e){}
     try { dk=await api("/api/data/key"); } catch(e){}
@@ -2543,6 +2394,26 @@ const App = (() => {
 
     const sysHTML=(sys.systems||[]).map(s=>`<div class="syschip">
         <span class="sdot ${s.ok}"></span><span class="slab">${h(s.label)}</span><span class="sdet">${h(s.detail)}</span></div>`).join("");
+
+    // Pipeline health — the honest "is anything silently broken?" card.
+    const _hAge=(t)=>{ if(!t) return "never"; const m=(Date.now()/1000-t)/60;
+      return m<2?"just now":m<60?Math.round(m)+"m ago":m<2880?Math.round(m/60)+"h ago":Math.round(m/1440)+"d ago"; };
+    const _hRow=(ok,label,detail)=>`<div class="syschip">
+        <span class="sdot ${ok?"ok":"warn"}"></span><span class="slab">${h(label)}</span><span class="sdet">${h(detail)}</span></div>`;
+    const healthHTML = hlt ? [
+      _hRow(hlt.plaud&&hlt.plaud.connected&&(!hlt.plaud.last_error),
+            "Plaud pipeline",
+            hlt.plaud&&hlt.plaud.connected
+              ? `last successful poll ${_hAge(hlt.plaud.last_ok)}${hlt.plaud.last_error?" · "+hlt.plaud.last_error:""}`
+              : "not connected"),
+      _hRow(hlt.crm&&hlt.crm.available&&hlt.crm.export_age_min!=null&&hlt.crm.export_age_min<180,
+            "CRM roster",
+            hlt.crm&&hlt.crm.export_age_min!=null?`export updated ${hlt.crm.export_age_min<60?Math.round(hlt.crm.export_age_min)+"m":Math.round(hlt.crm.export_age_min/60)+"h"} ago`:"no export yet"),
+      _hRow(hlt.telegram&&hlt.telegram.enabled, "Telegram delivery",
+            hlt.telegram&&hlt.telegram.enabled?"connected":"off"),
+      _hRow(!!(hlt.tunnel&&hlt.tunnel.url), "Public link",
+            hlt.tunnel&&hlt.tunnel.url?hlt.tunnel.url.replace(/^https?:\/\//,""):"starting…"),
+    ].join("") : "";
 
     const lastSync = crm.last_refresh ? new Date(crm.last_refresh*1000).toLocaleString() : "never";
     const crmPanel = crm.connected ? `
@@ -2607,7 +2478,7 @@ const App = (() => {
     app.innerHTML=`<div class="view view--wide settings panel-grid">
       ${masthead({title:"Settings"})}
       ${share}
-      <div class="panel"><h2>System status</h2>${sysHTML||'<p class="muted" style="font-size:14px">—</p>'}</div>
+      <div class="panel"><h2>System health</h2>${healthHTML}${sysHTML||(healthHTML?'':'<p class="muted" style="font-size:14px">—</p>')}</div>
       <div class="panel"><h2>Configuration</h2>
         <div class="kv"><span class="k">Analysis model</span><span class="v">${h(st.analysis_model||"?")}</span></div>
         <div class="kv"><span class="k">Transcription</span><span class="v">${h(st.transcribe_backend||"?")}${st.transcribe_backend==="faster_whisper"?" · "+h(st.whisper_model||""):""}</span></div>

@@ -97,6 +97,39 @@ def _poll_once() -> None:
         print(f"[plaud_cloud] ingested {new_count} new recording(s).")
 
 
+# Pipeline health — the #1 way this product dies is a silently-stalled pipeline.
+_HEALTH = {"last_ok": 0.0, "last_error": "", "alerted_at": 0.0}
+_STALL_AFTER_S = 24 * 3600
+
+
+def health() -> dict:
+    return {"connected": bool(settings.plaud_logged_in),
+            "enabled": bool(settings.plaud_cloud_enabled),
+            "last_ok": _HEALTH["last_ok"], "last_error": _HEALTH["last_error"]}
+
+
+def _stall_check() -> None:
+    """If polling hasn't SUCCEEDED in 24h while connected, tell Orion on Telegram —
+    once per 24h, so a broken token never rots silently again."""
+    if not (settings.plaud_logged_in and _HEALTH["last_ok"]):
+        return
+    now = time.time()
+    stalled_h = (now - _HEALTH["last_ok"]) / 3600
+    if stalled_h < _STALL_AFTER_S / 3600 or now - _HEALTH["alerted_at"] < _STALL_AFTER_S:
+        return
+    _HEALTH["alerted_at"] = now
+    try:
+        from ..notify import telegram
+        chat = telegram.default_chat()
+        if chat:
+            telegram.send_message(chat, (
+                f"⚠️ <b>Lucid pipeline stalled</b>\nPlaud polling hasn't succeeded in "
+                f"{int(stalled_h)}h ({_HEALTH['last_error'][:120] or 'no error captured'}). "
+                "New recordings are NOT coming in — check Settings → System health."))
+    except Exception:  # noqa: BLE001 — the alert must never hurt the poller
+        pass
+
+
 def _run() -> None:
     if not settings.plaud_logged_in:
         print("[plaud_cloud] not connected to Plaud yet. Finish the 'Connect "
@@ -106,8 +139,12 @@ def _run() -> None:
         try:
             if settings.plaud_logged_in:
                 _poll_once()
+                _HEALTH["last_ok"] = time.time()
+                _HEALTH["last_error"] = ""
         except Exception as exc:  # noqa: BLE001 — never let the thread die
+            _HEALTH["last_error"] = str(exc)[:200]
             print(f"[plaud_cloud] poll error: {exc}")
+        _stall_check()
         time.sleep(max(60, settings.plaud_poll_interval))
 
 

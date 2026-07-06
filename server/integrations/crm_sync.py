@@ -92,6 +92,25 @@ def set_override(email: str, action: str) -> bool:
         return False
 
 
+def act(email: str, action: str) -> tuple[bool, str]:
+    """One-off contact action via `cli.py act <send|done|draft> <email>` — 'send' fires the
+    Gmail draft orionscrm prepared on that contact's thread. Returns (ok, message)."""
+    crm_dir, py = _paths()
+    if action not in ("send", "done", "draft") or not Path(crm_dir, "cli.py").exists() or not email:
+        return False, "unavailable"
+    try:
+        r = subprocess.run([py, "cli.py", "act", action, email], cwd=crm_dir,
+                           env=dict(os.environ, PYTHONIOENCODING="utf-8"),
+                           capture_output=True, text=True, timeout=120)
+        msg = ((r.stdout or "") + (r.stderr or "")).strip()[-200:]
+        # cli.py prints the result but exits 0 even on soft failures — treat known
+        # failure phrases as not-ok so the UI never claims a send that didn't happen.
+        soft_fail = any(k in msg.lower() for k in ("no draft", "not found", "error", "unknown action"))
+        return (r.returncode == 0 and not soft_fail), msg
+    except Exception as e:  # noqa: BLE001
+        return False, str(e)[:200]
+
+
 def merge_contacts(primary: str, duplicate: str) -> bool:
     """Record a sticky duplicate merge via `cli.py merge <primary> <duplicate>` so future syncs
     fold the duplicate's touchpoints into the primary contact. Caller then refreshes."""

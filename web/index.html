@@ -32,11 +32,9 @@
     </button>
 
     <nav class="rail-nav" aria-label="Sections">
-      <button class="rail-item active" data-tab="home"   aria-current="page"><span class="rail-idx">1</span><span class="rail-label">Today</span></button>
-      <button class="rail-item"        data-tab="journal"><span class="rail-idx">2</span><span class="rail-label">Journal</span></button>
-      <button class="rail-item"        data-tab="lucid"><span class="rail-idx">3</span><span class="rail-label">Lucid</span></button>
-      <button class="rail-item"        data-tab="crm"><span class="rail-idx">4</span><span class="rail-label">CRM</span><span class="rail-badge" id="railCrmBadge" hidden></span></button>
-      <button class="rail-item"        data-tab="review"><span class="rail-idx">5</span><span class="rail-label">Review</span><span class="rail-badge" id="railReviewBadge" hidden></span></button>
+      <button class="rail-item active" data-tab="home"   aria-current="page"><span class="rail-idx">1</span><span class="rail-label">Today</span><span class="rail-badge" id="railTodayBadge" hidden></span></button>
+      <button class="rail-item"        data-tab="lucid"><span class="rail-idx">2</span><span class="rail-label">Library</span></button>
+      <button class="rail-item"        data-tab="crm"><span class="rail-idx">3</span><span class="rail-label">CRM</span><span class="rail-badge" id="railCrmBadge" hidden></span></button>
     </nav>
 
     <div class="rail-foot">
@@ -84,8 +82,6 @@
         <div class="segtoggle seg-lucid" role="tablist">
           <button data-seg="notes"    role="tab" aria-selected="true"><span class="seg-ic">&#9636;</span>Notes</button>
           <button data-seg="people"   role="tab" aria-selected="false"><span class="seg-ic">&#9677;</span>People</button>
-          <button data-seg="ideas"    role="tab" aria-selected="false"><span class="seg-ic">&#9670;</span>Ideas</button>
-          <button data-seg="projects" role="tab" aria-selected="false"><span class="seg-ic">&#9638;</span>Projects</button>
         </div>
       </div>
     </nav>
@@ -96,10 +92,8 @@
   <!-- BOTTOM TAB BAR — primary navigation on mobile (<900px) -->
   <nav class="tabbar">
     <button data-tab="home" class="active"><span class="ic">&#8962;</span>Today</button>
-    <button data-tab="journal"><span class="ic">&#9672;</span>Journal</button>
-    <button data-tab="lucid"><span class="ic">&#9737;</span>Lucid</button>
+    <button data-tab="lucid"><span class="ic">&#9737;</span>Library</button>
     <button data-tab="crm"><span class="ic">&#9638;</span>CRM</button>
-    <button data-tab="review"><span class="ic">&#10003;</span>Review</button>
   </nav>
 
   <input id="captureFile" type="file" accept="audio/*" hidden aria-hidden="true" />

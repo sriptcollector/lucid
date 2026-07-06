@@ -1138,6 +1138,46 @@ async def crm_board_override(request: Request) -> JSONResponse:
     return JSONResponse({"ok": ok, "refreshing": crm_sync.status().get("running", False)})
 
 
+@app.post("/api/crm/board/act", dependencies=[Depends(auth)])
+async def crm_board_act(request: Request) -> JSONResponse:
+    """One-tap queue actions: 'send' fires the prepared Gmail draft for a contact via
+    orionscrm (a real send, not a clipboard copy). body: {email, action: send|done|draft}."""
+    from .integrations import crm_sync
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    action = (body.get("action") or "").strip()
+    if not email or action not in ("send", "done", "draft"):
+        return JSONResponse({"ok": False, "detail": "bad request"}, status_code=400)
+    ok, msg = await asyncio.to_thread(crm_sync.act, email, action)
+    if ok:
+        crm_sync.refresh_async()          # surface the cleared reply-owed state
+    return JSONResponse({"ok": ok, "detail": msg})
+
+
+@app.get("/api/system/health", dependencies=[Depends(auth)])
+def system_health() -> JSONResponse:
+    """One honest place that says whether the pipelines are alive (Settings card)."""
+    import time as _time
+    from .ingest import plaud_cloud
+    from .integrations import crm_sync
+    out = {"plaud": plaud_cloud.health()}
+    try:
+        exp = settings.crm_contacts_path.parent / "crm_export.json"
+        out["crm"] = {"available": crm_sync.available(),
+                      "export_age_min": round(max(0.0, (_time.time() - exp.stat().st_mtime) / 60), 1)}
+    except Exception:
+        out["crm"] = {"available": crm_sync.available(), "export_age_min": None}
+    try:
+        out["telegram"] = {"enabled": bool(settings.telegram_enabled and settings.telegram_bot_token)}
+    except Exception:
+        out["telegram"] = {"enabled": False}
+    try:
+        out["tunnel"] = {"url": settings.current_public_url() or ""}
+    except Exception:
+        out["tunnel"] = {"url": ""}
+    return JSONResponse(out)
+
+
 @app.post("/api/crm/board/merge", dependencies=[Depends(auth)])
 async def crm_board_merge(request: Request) -> JSONResponse:
     """Merge a detected duplicate contact into its primary. body: {primary, duplicate}."""
