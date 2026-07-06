@@ -699,16 +699,15 @@ const App = (() => {
     const CATS=[{k:"all",l:"All"},{k:"work",l:"Work"},{k:"mental",l:"Mental"},{k:"other",l:"Other"}];
     const catbar=recs.length?`<div class="filterbar catbar">
       ${CATS.map(c=>`<button class="fchip${noteCat===c.k?" on":""}" data-cat="${c.k}">${c.l}</button>`).join("")}</div>`:"";
-    const tools=recs.length?`<button class="btn ghost selbtn" id="noteSelBtn">${hubSel.mode&&hubSel.type==="note"?"Done":"Select"}</button>`:"";
     const search=recs.length?secSearchHTML("notes","Search notes…"):"";
 
-    // Search + filters lead, the stat ribbon trails (hidden on phones) — so actual
-    // notes are visible above the fold instead of a full screen of controls.
+    // Search + filters lead — actual notes are visible above the fold instead of
+    // a full screen of controls. (Select mode left with Projects.)
     app.innerHTML=`<div class="view notes-feed">
       ${masthead({title:`Notes <span class="count">${done.length} sorted</span>`, note:ed})}
       ${search}
-      ${filterbar}${catbar?catbar.replace(/<\/div>$/,tools+"</div>"):tools}
-      ${body}${hubSelBar()}</div>`;
+      ${filterbar}${catbar}
+      ${body}</div>`;
     paintDone();
     bindCards();
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
@@ -716,7 +715,6 @@ const App = (() => {
     if(ms) ms.onclick=()=>{ homeSort = homeSort===ms.dataset.sort ? "newest" : ms.dataset.sort; paintNotes(); };
     app.querySelectorAll(".filterbar:not(.catbar) .fchip").forEach(b=>b.onclick=()=>{ homeFilter=b.dataset.f; paintNotes(); });
     app.querySelectorAll(".catbar .fchip").forEach(b=>b.onclick=()=>{ noteCat=b.dataset.cat; paintNotes(); });
-    const nsb=document.getElementById("noteSelBtn"); if(nsb) nsb.onclick=()=>hubSelToggle("note");
     bindHubSelBar("note"); bindSecSearch(app,".notecard");
     const ss=document.getElementById("sortSel"); if(ss) ss.onchange=()=>{ homeSort=ss.value; paintNotes(); };
     const sa=document.getElementById("showAllNotes");
@@ -1482,14 +1480,11 @@ const App = (() => {
       ${secSearchHTML("people","Search people…")}
       ${sections||`<div class="empty"><div class="big">&#9737;</div>Nothing in this view.</div>`}
       ${selMode&&sel.size?`<div class="selbar"><span>${sel.size} selected</span>
-        <button class="btn" id="peopleAddProj">Add to project</button>
         <button class="btn" id="combineBtn" ${sel.size<2?"disabled":""}>Combine</button>
         <button class="btn ghost" id="deleteBtn">Delete</button></div>`:""}</div>`;
     paintDone();
     bindSeg();
     bindSecSearch(app,".pcard");
-    const pap=document.getElementById("peopleAddProj");
-    if(pap) pap.onclick=()=>openProjectPicker([...sel].map(ref=>({type:"person",ref})));
     app.querySelectorAll(".statcard[data-f]").forEach(b=>b.onclick=()=>{peopleFilter=b.dataset.f;renderPeople();});
     const scb=app.querySelector('.statcard[data-scroll]');
     if(scb) scb.onclick=()=>{const el=document.getElementById(scb.dataset.scroll); if(el) el.scrollIntoView({behavior:"smooth",block:"start"});};
@@ -2888,13 +2883,10 @@ const App = (() => {
   function ctxItemsForEntity(type, ref){
     if(!ref) return [];
     if(type==="note") return [ {label:"✦ Ask Lucid", run:()=>go("/r/"+ref)},
-      {label:"Add to project…", run:()=>openProjectPicker([{type:"note",ref}])},
       {sep:true}, {label:"Delete note", danger:true, run:()=>del(ref)} ];
     if(type==="person") return [ {label:"Open", run:()=>go("/people/"+encodeURIComponent(ref))},
-      {label:"Add to project…", run:()=>openProjectPicker([{type:"person",ref}])},
       {sep:true}, {label:"Forget", danger:true, run:()=>{ if(confirm("Forget everything learned about this person? (their recordings stay)")) forgetPerson(ref); }} ];
     if(type==="idea") return [ {label:"Open", run:()=>go("/ventures/"+encodeURIComponent(ref))},
-      {label:"Add to project…", run:()=>openProjectPicker([{type:"idea",ref}])},
       {sep:true}, {label:"Delete idea", danger:true, run:()=>{ if(confirm("Delete this idea? This can't be undone.")) deleteIdea(ref); }} ];
     if(type==="contact") return [ {label:"Open", run:()=>go("/crm/"+encodeURIComponent(ref))},
       {sep:true}, {label:"Remove from CRM", danger:true, run:()=>crmOverride(ref,"remove")} ];
@@ -2916,11 +2908,9 @@ const App = (() => {
       return out; }
     if(card.classList.contains("notecard")){ const id=card.dataset.id;
       return [ {label:"✦ Ask Lucid", run:()=>go("/r/"+id)},
-        {label:"Add to project…", run:()=>openProjectPicker([{type:"note",ref:id}])},
         {sep:true}, {label:"Delete", danger:true, run:()=>slideOut(card,()=>del(id))} ]; }
     if(card.classList.contains("idea-card")){ const id=card.dataset.id;
       return [ {label:"Open", run:()=>go("/ventures/"+encodeURIComponent(id))},
-        {label:"Add to project…", run:()=>openProjectPicker([{type:"idea",ref:id}])},
         {sep:true}, {label:"Delete idea", danger:true, run:()=>{ if(confirm("Delete this idea? This can't be undone.")) deleteIdea(id); }} ]; }
     if(card.classList.contains("crmcard")){ const email=card.dataset.email;
       const dup=((crmData&&crmData.duplicates)||[]).find(x=>x&&(x.primary_email===email||x.duplicate_email===email));
@@ -2930,7 +2920,6 @@ const App = (() => {
       return items; }
     if(card.classList.contains("pcard")){ const key=card.dataset.key;
       return [ {label:"Open", run:()=>go("/people/"+encodeURIComponent(key))},
-        {label:"Add to project…", run:()=>openProjectPicker([{type:"person",ref:key}])},
         {sep:true}, {label:"Forget", danger:true, run:()=>{ if(confirm("Forget everything learned about this person? (their recordings stay)")) forgetPerson(key); }} ]; }
     return [];
   }
