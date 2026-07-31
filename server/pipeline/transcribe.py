@@ -11,10 +11,18 @@ dependency for the one you actually use.
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 
 from ..config import settings
 from ..models import Segment
+
+# One GPU, one large-v3 model (~10GB in float16). Concurrent transcriptions
+# each tried to load their own copy and thrashed the GPU into OOM at ~100%
+# util with nothing completing (seen 2026-07-29 when 11 stuck recordings were
+# re-enqueued at once). This lock makes the model load exactly once and lets
+# only ONE transcription run at a time; jobs queue instead of fighting.
+_TX_LOCK = threading.Lock()
 
 
 def transcribe(audio_file: Path) -> tuple[list[Segment], str | None]:
@@ -99,6 +107,11 @@ def _load_model() -> None:
 
 
 def _faster_whisper(audio_file: Path) -> tuple[list[Segment], str | None]:
+    with _TX_LOCK:
+        return _faster_whisper_locked(audio_file)
+
+
+def _faster_whisper_locked(audio_file: Path) -> tuple[list[Segment], str | None]:
     if _fw_model is None:
         _load_model()
 

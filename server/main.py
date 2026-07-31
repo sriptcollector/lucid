@@ -34,7 +34,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import backup, email_login, setup_service, storage, tunnel
+from . import agent, backup, businesses, email_login, setup_service, storage, tunnel
 from .config import settings
 from .ingest import intake, plaud_cloud, telegram_bot, watcher
 from .models import Status
@@ -138,8 +138,29 @@ def _startup() -> None:
     backup.start()        # periodic consistent snapshots of the notes DB
     intake.set_enqueue(lambda rec_id: _pool.submit(runner.process, rec_id))
     watcher.start()
+    # Re-kick recordings that never finished (queued / transcribing / error).
+    # Server restarts interrupt in-flight jobs, and analysis used to die on
+    # exhausted API credits; both left recordings stuck with no note. Now
+    # analysis falls back to the Claude CLI, so a re-run actually completes.
+    try:
+        stuck = [r for r in storage.list_recordings(limit=500)
+                 if (r.status.value if hasattr(r.status, "value") else
+                     str(r.status)) != "done"]
+        for r in stuck[:25]:
+            _pool.submit(runner.process, r.id)
+        if stuck:
+            print("[startup] re-enqueued %d unfinished recording(s)"
+                  % len(stuck[:25]), flush=True)
+    except Exception as e:  # noqa: BLE001
+        print("[startup] re-enqueue failed: %s" % str(e)[:120], flush=True)
     if settings.is_configured:
         start_runtime_services()
+        # warm the business/project grouping in the background so the first
+        # visit to that view is already sorted
+        try:
+            businesses.warm_async(storage.list_recordings(limit=500))
+        except Exception:  # noqa: BLE001
+            pass
 
 
 @app.on_event("shutdown")
@@ -955,6 +976,239 @@ def get_person(key: str) -> JSONResponse:
 def delete_venture(vid: str) -> dict:
     ventures.delete_venture(vid)
     return {"deleted": vid}
+
+
+@app.get("/api/businesses", dependencies=[Depends(auth)])
+def list_businesses() -> JSONResponse:
+    """Notes grouped under the Claude Code project each is about, with
+    per-project new/uncopied counts. Cache-based and instant; a background
+    warmer classifies any new notes."""
+    recs = storage.list_recordings(limit=500)
+    return JSONResponse(businesses.build_groups(recs))
+
+
+@app.get("/api/projects/all", dependencies=[Depends(auth)])
+def all_projects_index() -> JSONResponse:
+    """Every project (all GitHub repos + custom subjects), with note counts,
+    for the browsable list. Cache-based; a background warmer classifies."""
+    recs = storage.list_recordings(limit=500)
+    idx = businesses.project_index(recs)
+    if any(r.id not in businesses._load(businesses.ASSIGN_CACHE, {}) for r in recs):
+        businesses.warm_async(recs)
+    return JSONResponse(idx)
+
+
+@app.get("/api/mental", dependencies=[Depends(auth)])
+def mental() -> JSONResponse:
+    """The 'Mental' view: notes where the speaker reflects on themselves, plus
+    a synthesized read of their recurring psychological patterns. Cache-based
+    and instant; warms uncached notes in the background."""
+    recs = storage.list_recordings(limit=500)
+    idx = businesses.mental_index(recs)
+    idx["patterns"] = businesses.mental_patterns(recs) if idx.get("count", 0) >= 2 else ""
+    return JSONResponse(idx)
+
+
+@app.post("/api/github/refresh", dependencies=[Depends(auth)])
+def github_refresh() -> dict:
+    """Re-pull the GitHub repo list + regenerate friendly names, then re-sort."""
+    businesses.github_repos(force=True)
+    businesses.friendly_names(businesses.github_repos())
+    businesses.warm_async(storage.list_recordings(limit=500), force=True)
+    return {"ok": True}
+
+
+@app.post("/api/businesses/refresh", dependencies=[Depends(auth)])
+def refresh_businesses(force: bool = False) -> dict:
+    """Re-sort. force=true re-classifies EVERY note from scratch (used after
+    adding a project, so existing notes get a chance to match it)."""
+    businesses.discover_projects(force=True)
+    recs = storage.list_recordings(limit=500)
+    if force:
+        businesses.warm_async(recs, force=True)
+    else:
+        businesses.warm_async(recs)
+    return {"ok": True}
+
+
+@app.post("/api/businesses/custom", dependencies=[Depends(auth)])
+async def create_custom_project(request: Request) -> JSONResponse:
+    """Create a project that isn't a Claude Code repo (e.g. a game being
+    discussed before its code exists), then re-sort every note against it."""
+    body = await request.json()
+    try:
+        proj = businesses.add_custom_project(
+            body.get("name", ""), body.get("blurb", ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    businesses.warm_async(storage.list_recordings(limit=500), force=True)
+    return JSONResponse({"ok": True, "project": proj})
+
+
+@app.get("/api/businesses/{pid}/copytext", dependencies=[Depends(auth)])
+def business_copytext(pid: str, all: bool = False, days: int = 0,
+                      sections: str = "", recent: int = 0) -> JSONResponse:
+    """Clean, filterable project-only summary.
+    all: false -> new (uncopied) notes; true -> every note about the project.
+    days: 0 -> any time; else only notes from the last N days.
+    recent: 0 -> off; else the N most recent notes (Copy recent).
+    sections: comma list of gist,decisions,actions,ideas (blank = all)."""
+    recs = storage.list_recordings(limit=500)
+    secs = [s.strip() for s in sections.split(",") if s.strip()] or None
+    return JSONResponse(businesses.copy_payload(
+        pid, recs, include_all=all, since_days=max(0, days), sections=secs,
+        recent=max(0, recent)))
+
+
+@app.post("/api/businesses/compile", dependencies=[Depends(auth)])
+async def business_compile(request: Request) -> JSONResponse:
+    """Combine several projects into ONE compiled brief the user can copy.
+    Body: {ids:[...], recent:int (N newest per project), days:int, sections}."""
+    body = await request.json()
+    ids = [str(i) for i in (body.get("ids") or []) if str(i).strip()]
+    if not ids:
+        raise HTTPException(400, "Select at least one project")
+    try:
+        recent = int(body.get("recent") or 0)
+    except (TypeError, ValueError):
+        recent = 0
+    try:
+        days = int(body.get("days") or 0)
+    except (TypeError, ValueError):
+        days = 0
+    sections = body.get("sections") or None
+    if isinstance(sections, str):
+        sections = [s.strip() for s in sections.split(",") if s.strip()] or None
+    recs = storage.list_recordings(limit=500)
+    return JSONResponse(businesses.compile_projects(
+        ids, recs, recent=max(0, recent), since_days=max(0, days),
+        sections=sections))
+
+
+@app.post("/api/businesses/{pid}/copied", dependencies=[Depends(auth)])
+async def business_copied(pid: str, request: Request) -> dict:
+    """Mark a project's notes as copied so they stop showing as new."""
+    body = await request.json()
+    ids = body.get("ids") or []
+    if not isinstance(ids, list):
+        raise HTTPException(400, "ids must be a list")
+    businesses.mark_copied(pid, [str(i) for i in ids])
+    return {"ok": True, "copied": len(ids)}
+
+
+@app.post("/api/businesses/{pid}/request", dependencies=[Depends(auth)])
+async def business_request_change(pid: str, request: Request) -> JSONResponse:
+    """Run a real Claude Code session (Opus 4.8, full tools) on this
+    project's repo, on THIS machine, to make the requested change. Optional
+    'image' (base64 data URL) attaches a screenshot the agent can look at."""
+    body = await request.json()
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "Describe the change you want")
+    return JSONResponse(agent.request_change(pid, text, image=body.get("image")))
+
+
+@app.post("/api/businesses/{pid}/fix-all", dependencies=[Depends(auth)])
+def business_fix_all(pid: str) -> JSONResponse:
+    """Combine every UNREAD note about this project into ONE change request
+    and run it. Marks those notes read."""
+    recs = storage.list_recordings(limit=500)
+    payload = businesses.combine_change_prompt(pid, recs)
+    if not payload:
+        return JSONResponse({"ok": False, "error": "no new updates"})
+    # pass the note ids to the job; they're marked read only when the change
+    # actually SUCCEEDS, so a failed/timed-out agent doesn't silently drop them.
+    r = agent.request_change(pid, payload["prompt"], seen_ids=payload["ids"])
+    return JSONResponse(r)
+
+
+@app.post("/api/notes/{rec_id}/seen", dependencies=[Depends(auth)])
+def note_seen(rec_id: str) -> dict:
+    """Read receipt: mark a note seen so its blue 'new' marker clears."""
+    rec = storage.get(rec_id)
+    if rec:
+        businesses.mark_seen([rec_id], [rec])
+    return {"ok": True}
+
+
+@app.get("/api/notes/{rec_id}/brief", dependencies=[Depends(auth)])
+def note_brief(rec_id: str) -> JSONResponse:
+    """Clean, third-person dev/company briefing of the note (no personal
+    chatter, no 'Orion said'). Behind the 'Copy real info' button."""
+    rec = storage.get(rec_id)
+    if not rec:
+        raise HTTPException(404, "No such note")
+    return JSONResponse({"brief": businesses.note_brief(rec)})
+
+
+@app.get("/api/businesses/{pid}/deploy/info", dependencies=[Depends(auth)])
+def deploy_info(pid: str) -> JSONResponse:
+    """How this project deploys (vercel / cloudflare) and whether it's ready."""
+    proj = agent.project_for(pid)
+    if not proj:
+        raise HTTPException(404, "No such project")
+    info = agent.detect_deploy(proj.get("cwd", ""), proj.get("orig_name", ""))
+    # A repo that isn't cloned locally yet reads as method "none" (no folder),
+    # but the deploy job clones on demand and would work. Tell the UI it's
+    # deployable-after-clone instead of showing a false "no deploy setup".
+    if info.get("method") == "none" and not proj.get("cwd") and proj.get("url"):
+        info = {"method": "auto", "ready": True,
+                "note": "Deploy target is detected on first deploy (clones the "
+                        "repo, then Vercel/Cloudflare)."}
+    return JSONResponse(info)
+
+
+@app.post("/api/businesses/{pid}/deploy", dependencies=[Depends(auth)])
+def deploy_project(pid: str, prod: bool = False) -> JSONResponse:
+    """Deploy the project. prod=false -> preview URL; prod=true -> live
+    domain. Production is deliberately a separate call from preview."""
+    return JSONResponse(agent.request_deploy(pid, prod))
+
+
+@app.get("/api/notes/{rec_id}/target", dependencies=[Depends(auth)])
+def note_target(rec_id: str) -> JSONResponse:
+    """Which project this note is about (if any), whether that project has a
+    repo we can change, and the note turned into a change prompt. Powers the
+    'send this to a Claude Code agent and fix it' button on a note."""
+    rec = storage.get(rec_id)
+    if not rec:
+        raise HTTPException(404, "No such note")
+    assign = businesses._cached_assign([rec])
+    pid = assign.get(rec_id)
+    proj = next((p for p in businesses.all_projects() if p["id"] == pid), None)
+    has_repo = bool(proj and (proj.get("cwd") or proj.get("url")))
+    a = rec.analysis
+    transcript = (rec.full_text_translated or rec.full_text or "").strip()
+    prompt = ("I recorded a voice note about this project. Read what I said "
+              "and make the change(s) I'm asking for in the code. Keep it "
+              "focused on exactly what I describe.\n\n")
+    if a and a.summary:
+        prompt += "Summary of my note:\n" + a.summary + "\n\n"
+    if a and a.action_items:
+        prompt += "Things I want done:\n" + "\n".join(
+            "- " + x.text for x in a.action_items) + "\n\n"
+    prompt += "My exact words (transcript):\n" + transcript[:6000]
+    return JSONResponse({
+        "project": ({"id": proj["id"], "name": proj["name"],
+                     "orig_name": proj.get("orig_name", ""),
+                     "url": proj.get("url", "")} if proj else None),
+        "has_repo": has_repo,
+        "summary": (a.summary if a else "") or "",
+        "prompt": prompt,
+    })
+
+
+@app.get("/api/agent/jobs/{job_id}", dependencies=[Depends(auth)])
+def agent_job(job_id: str) -> JSONResponse:
+    j = agent.job(job_id)
+    if not j:
+        raise HTTPException(404, "No such job")
+    return JSONResponse(j)
+
+
+@app.get("/api/agent/jobs", dependencies=[Depends(auth)])
+def agent_jobs(project: str = "") -> JSONResponse:
+    return JSONResponse({"jobs": agent.history(project or None)})
 
 
 @app.get("/api/projects", dependencies=[Depends(auth)])

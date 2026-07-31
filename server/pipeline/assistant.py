@@ -78,17 +78,25 @@ def respond(rec, message: str, history: list[dict]) -> dict:
             msgs.append({"role": role, "content": content})
     msgs.append({"role": "user", "content": message})
 
-    resp = client.messages.create(
-        model=settings.analysis_model,
-        max_tokens=2000,
-        system=[
-            {"type": "text", "text": SYSTEM},
-            {"type": "text", "text": context, "cache_control": {"type": "ephemeral"}},
-        ],
-        tools=[TOOL],
-        tool_choice={"type": "tool", "name": "reply"},
-        messages=msgs,
-    )
+    try:
+        resp = client.messages.create(
+            model=settings.analysis_model,
+            max_tokens=2000,
+            system=[
+                {"type": "text", "text": SYSTEM},
+                {"type": "text", "text": context, "cache_control": {"type": "ephemeral"}},
+            ],
+            tools=[TOOL],
+            tool_choice={"type": "tool", "name": "reply"},
+            messages=msgs,
+        )
+    except Exception as e:
+        # Out of API credits / network error: degrade to a clear message
+        # instead of a 500 that looks like the whole app is broken.
+        return {"answer": "Chat is temporarily unavailable (the AI service "
+                          "couldn't be reached). Your note and its analysis are "
+                          "unaffected.", "quotes": [], "edits": [],
+                "error": str(e)[:200]}
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use" and block.name == "reply":
             out = block.input

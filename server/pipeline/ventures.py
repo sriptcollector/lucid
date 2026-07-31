@@ -125,6 +125,8 @@ def _business_ids(ventures: dict) -> set[str]:
     items = [{"id": v["id"], "title": v["title"], "summary": (v["summary"] or "")[:160]}
              for v in ventures.values()]
     keep = set(ids)  # fail-open: if classification fails, show everything
+    ok = False       # ...but DON'T cache a fail-open result, or it poisons the
+                     # list until the idea set changes (was: always cached).
     try:
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         tool = {
@@ -153,12 +155,14 @@ def _business_ids(ventures: dict) -> set[str]:
                 picked = {i for i in block.input.get("business_ids", []) if i in ventures}
                 if picked:
                     keep = picked
+                ok = True   # the classifier responded — safe to cache
     except Exception:
-        pass
-    with _lock:
-        d = _load()
-        d["classify"] = {"hash": h, "business_ids": sorted(keep)}
-        _save(d)
+        ok = False
+    if ok:
+        with _lock:
+            d = _load()
+            d["classify"] = {"hash": h, "business_ids": sorted(keep)}
+            _save(d)
     return keep
 
 

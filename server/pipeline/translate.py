@@ -41,25 +41,26 @@ def _claude_translate(segments: list[Segment], target: str) -> list[Segment]:
     for i in range(0, len(segments), BATCH):
         chunk = segments[i : i + BATCH]
         numbered = [{"i": j, "text": s.text} for j, s in enumerate(chunk)]
-        msg = client.messages.create(
-            model=settings.analysis_model,
-            max_tokens=8000,
-            system=(
-                f"You are a professional translator. Translate each item's text "
-                f"into {target}. Preserve meaning, tone, names and numbers. "
-                f"Return ONLY a JSON array of objects {{\"i\": int, \"text\": str}} "
-                f"with the same indices. No commentary."
-            ),
-            messages=[{"role": "user", "content": json.dumps(numbered, ensure_ascii=False)}],
-        )
-        text = _first_text(msg)
         try:
-            out = json.loads(_strip_fences(text))
+            # The whole API round-trip is inside the guard: translation is a
+            # nice-to-have, so an out-of-credits / network / parse failure must
+            # NOT kill the recording — it falls back to the original text.
+            msg = client.messages.create(
+                model=settings.analysis_model,
+                max_tokens=8000,
+                system=(
+                    f"You are a professional translator. Translate each item's text "
+                    f"into {target}. Preserve meaning, tone, names and numbers. "
+                    f"Return ONLY a JSON array of objects {{\"i\": int, \"text\": str}} "
+                    f"with the same indices. No commentary."
+                ),
+                messages=[{"role": "user", "content": json.dumps(numbered, ensure_ascii=False)}],
+            )
+            out = json.loads(_strip_fences(_first_text(msg)))
             by_i = {o["i"]: o["text"] for o in out}
             for j, seg in enumerate(chunk):
                 seg.text_translated = by_i.get(j, seg.text)
         except Exception:
-            # On a parse failure, fall back to original text for this batch.
             for seg in chunk:
                 seg.text_translated = seg.text
     return segments

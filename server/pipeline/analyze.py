@@ -295,9 +295,39 @@ ANALYSIS_TOOL = {
 }
 
 
-def analyze(rec: Recording) -> Analysis:
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+def _cli_analyze(user_msg: str) -> Analysis:
+    """Analyse via the Claude Code CLI (Max subscription) instead of the paid
+    API. The Anthropic API on this machine is out of credits, which left
+    incoming Plaud recordings stuck in 'error' with no analysis. The CLI runs
+    on the subscription for $0, exactly like the note sorter. It emits the
+    same JSON `_to_analysis` expects, so nothing downstream changes."""
+    import json as _json
+    import os
+    import subprocess
+    from .. import businesses
+    exe = businesses._claude_exe()
+    if not exe:
+        raise RuntimeError("no claude CLI available for analysis")
+    schema = _json.dumps(ANALYSIS_TOOL["input_schema"])
+    prompt = (SYSTEM + "\n\n" + user_msg +
+              "\n\nEmit ONLY a single JSON object (no prose, no code fence, "
+              "no tool call) that conforms to this JSON schema:\n" + schema)
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith("ANTHROPIC_")
+           and not k.startswith("CLAUDE_CODE_USE_")}
+    p = subprocess.run(
+        [exe, "-p", "--model", settings.analysis_model,
+         "--output-format", "text"],
+        input=prompt, env=env, cwd=os.path.expanduser("~"),
+        capture_output=True, text=True, timeout=600)
+    out = p.stdout or ""
+    s, e = out.find("{"), out.rfind("}")
+    if s < 0 or e <= s:
+        raise RuntimeError("CLI analysis returned no JSON: %s" % out[:200])
+    return _to_analysis(_json.loads(out[s:e + 1]))
 
+
+def analyze(rec: Recording) -> Analysis:
     transcript = rec.full_text_translated or rec.full_text
     if not transcript.strip():
         return Analysis(summary="(empty transcript)")
@@ -310,19 +340,25 @@ def analyze(rec: Recording) -> Analysis:
         + f"TRANSCRIPT:\n{transcript}"
     )
 
-    msg = client.messages.create(
-        model=settings.analysis_model,
-        max_tokens=16000,
-        system=[
-            {"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}
-        ],
-        tools=[ANALYSIS_TOOL],
-        tool_choice={"type": "tool", "name": "emit_analysis"},
-        messages=[{"role": "user", "content": user_msg}],
-    )
-
-    data = _extract_tool_input(msg)
-    return _to_analysis(data)
+    # Prefer the paid API when it actually works; fall back to the Claude
+    # Code CLI (subscription) whenever the API fails - which, with credits
+    # exhausted, is every time. Either way we return a real Analysis.
+    try:
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        msg = client.messages.create(
+            model=settings.analysis_model,
+            max_tokens=16000,
+            system=[{"type": "text", "text": SYSTEM,
+                     "cache_control": {"type": "ephemeral"}}],
+            tools=[ANALYSIS_TOOL],
+            tool_choice={"type": "tool", "name": "emit_analysis"},
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        return _to_analysis(_extract_tool_input(msg))
+    except Exception as api_err:
+        print("[analyze] API failed (%s) - using Claude CLI"
+              % str(api_err)[:120], flush=True)
+        return _cli_analyze(user_msg)
 
 
 def _known_context(rec) -> str:

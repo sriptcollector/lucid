@@ -102,7 +102,12 @@ class Settings(BaseSettings):
     api_tokens: str = ""                    # comma-separated bearer tokens
 
     # --- Public hosting via Cloudflare quick tunnel ---
-    tunnel_enabled: bool = True             # ON by default for the product
+    # OFF by default: this machine serves the site through a NAMED cloudflared
+    # tunnel (lucid.orion-jones.com). If the app also starts its own *quick*
+    # tunnel it registers a competing connector AND its random trycloudflare
+    # URL shadows the named host in public_url_file — that took the site down
+    # before. Only turn this on for a standalone deployment with no named tunnel.
+    tunnel_enabled: bool = False
     cloudflared_path: str = ""
 
     # --- Stable public link (optional; owner-only) ---
