@@ -1100,12 +1100,24 @@ async def business_copied(pid: str, request: Request) -> dict:
 async def business_request_change(pid: str, request: Request) -> JSONResponse:
     """Run a real Claude Code session (Opus 4.8, full tools) on this
     project's repo, on THIS machine, to make the requested change. Optional
-    'image' (base64 data URL) attaches a screenshot the agent can look at."""
+    'image' (base64 data URL) attaches a screenshot the agent can look at.
+    'resume' continues a previous CLI session (chat replies keep context);
+    'playbook' true prepends Orion's product playbook so the session builds
+    the way he builds."""
     body = await request.json()
     text = (body.get("text") or "").strip()
     if not text:
         raise HTTPException(400, "Describe the change you want")
-    return JSONResponse(agent.request_change(pid, text, image=body.get("image")))
+    pre = ""
+    if body.get("playbook"):
+        pb = beliefs.get_text().strip()
+        if pb:
+            pre = ("MY PRODUCT PLAYBOOK (follow these beliefs in every "
+                   "product and design decision you make):\n" + pb[:4000]
+                   + "\n\n---\nMY REQUEST:\n")
+    return JSONResponse(agent.request_change(
+        pid, text, image=body.get("image"), preamble=pre,
+        resume=str(body.get("resume") or "")))
 
 
 @app.post("/api/businesses/{pid}/fix-all", dependencies=[Depends(auth)])
@@ -1228,6 +1240,26 @@ def agent_jobs(project: str = "", logs: int = 0, limit: int = 30) -> JSONRespons
     return JSONResponse({"jobs": agent.history(
         project or None, limit=max(1, min(limit, 200)),
         include_log=bool(logs))})
+
+
+@app.post("/api/agent/jobs/{job_id}/stop", dependencies=[Depends(auth)])
+def agent_job_stop(job_id: str) -> JSONResponse:
+    """Kill a running session (the ⏹ Stop button)."""
+    r = agent.stop(job_id)
+    if not r.get("ok"):
+        raise HTTPException(
+            404 if r.get("error") == "no such live job" else 400,
+            r.get("error") or "stop failed")
+    return JSONResponse(r)
+
+
+@app.delete("/api/agent/jobs/{job_id}", dependencies=[Depends(auth)])
+def agent_job_delete(job_id: str) -> JSONResponse:
+    """Remove a finished session from the chats history."""
+    r = agent.delete_job(job_id)
+    if not r.get("ok"):
+        raise HTTPException(400, r.get("error") or "delete failed")
+    return JSONResponse(r)
 
 
 @app.post("/api/agent/jobs/{job_id}/rename", dependencies=[Depends(auth)])

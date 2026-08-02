@@ -312,6 +312,7 @@
       const lg = out.querySelector(".asklog"); if (lg) lg.scrollTop = lg.scrollHeight;
     };
     controls.disable();
+    if (opts.jobId && opts.onJob) opts.onJob(opts.jobId);
     const renderChange = (j) => {
       const active = j.status === "queued" || j.status === "running";
       stage(`<div class="askstatus">${active ? '<span class="spin sm"></span>' : (j.status === "done" ? "✓ " : "⚠ ")}1. Change — ${active ? "working…" : (j.status === "done" ? "done" : j.status)}</div>
@@ -327,6 +328,7 @@
         if (!r.ok) { stage(`<div class="askjob err">${h(r.error || "Couldn't start")}</div>`); controls.enable(); clearJob(pid); return; }
         if (!r.job) { stage(`<div class="askjob">${h(r.note || "Nothing new to change.")}</div>`); controls.enable(); clearJob(pid); return; }
         changeJobId = r.job;
+        if (opts.onJob) opts.onJob(changeJobId);
       }
       saveJob(pid, changeJobId, "change");
       let changeLog = "";
@@ -348,6 +350,7 @@
       catch (e) { stage(`<div class="askstatus done">✓ 1. Change made</div><div class="askjob err">Change made, but couldn't start deploy.</div>`); controls.enable(); clearJob(pid); return; }
       if (!dr.ok) { stage(`<div class="askstatus done">✓ 1. Change made</div><div class="askjob err">Change made. Deploy: ${h(dr.error || "unavailable")}</div>`); controls.enable(); clearJob(pid); return; }
       opts.jobId = dr.job;
+      if (opts.onJob) opts.onJob(dr.job);
     }
     // deploy phase
     saveJob(pid, opts.jobId, "deploy");
@@ -367,7 +370,7 @@
   // reload), re-attach to it live. Returns true if it took over `out`.
   // `out` can be an element, or a function(job) that builds and returns the
   // element (the project chat uses this to append a live session to the thread).
-  async function resumeJob(pid, out, controls, onDone) {
+  async function resumeJob(pid, out, controls, onDone, onJob) {
     const saved = getJob(pid);
     if (!saved) return false;
     controls.disable();  // synchronous: close the gap where the user could start a 2nd job mid-lookup
@@ -377,7 +380,7 @@
     // still running, or a change that finished with edits but hadn't deployed yet
     if (active || (saved.phase === "change" && j.status === "done" && (j.changed || []).length)) {
       const slot = (typeof out === "function") ? out(j) : out;
-      chainChangeDeploy(pid, { jobId: saved.jobId, phase: saved.phase }, slot, controls)
+      chainChangeDeploy(pid, { jobId: saved.jobId, phase: saved.phase, onJob }, slot, controls)
         .then(() => { if (onDone) onDone(); });
       return true;
     }
@@ -399,9 +402,18 @@
   const isLive = (j) => j.status === "queued" || j.status === "running";
   const dotCls = (j) => isLive(j) ? "live" : (j.status === "done" ? "ok" : "bad");
 
+  let _scTimer = null;
+  const _scSeen = {};   // job id -> last status, to toast finishes once
   function paintSideChats() {
     const box = document.getElementById("scList"); if (!box) return;
     fetchChats().then(list => {
+      // finish notifications: a session that WAS live and isn't anymore
+      list.forEach(j => {
+        const prev = _scSeen[j.id];
+        if ((prev === "queued" || prev === "running") && !isLive(j))
+          toast((j.status === "done" ? "✓ " : "⚠ ") + "Session " + (j.status === "done" ? "finished" : j.status) + ": " + chatTitle(j));
+        _scSeen[j.id] = j.status;
+      });
       const cur = document.getElementById("scList"); if (!cur) return;
       cur.innerHTML = list.slice(0, 8).map(j => `<button class="sc-row" data-cj="${h(j.id)}" data-cp="${h(j.project || "")}">
           <span class="sc-dot ${dotCls(j)}"></span>
@@ -411,6 +423,10 @@
       cur.querySelectorAll(".sc-row").forEach(b => b.onclick = () => {
         location.hash = b.dataset.cp ? "#/project/" + b.dataset.cp : "#/chats";
       });
+      // keep watching while anything is running, so the dot goes green and
+      // the finish toast fires even if you're on another page
+      clearTimeout(_scTimer);
+      if (list.some(isLive)) _scTimer = setTimeout(() => { _chats = null; paintSideChats(); }, 10000);
     });
   }
 
@@ -450,6 +466,8 @@
           <div class="cr-m">${h(j.project_name || "")}${j.kind === "deploy" ? " · deploy" : ""} · ${h(relTs(j.started))} · ${isLive(j) ? "running" : h(j.status || "")}${(j.changed || []).length ? ` · ${j.changed.length} file${j.changed.length != 1 ? "s" : ""}` : ""}</div>
         </div>
         <button class="icbtn" data-ren="${i}" title="Rename">✎</button>
+        ${isLive(j) ? `<button class="icbtn" data-stop="${h(j.id)}" title="Stop this session">⏹</button>`
+        : `<button class="icbtn cr-x" data-del="${h(j.id)}" title="Delete from history">✕</button>`}
       </div>`).join("");
     view().innerHTML = topbar("Chats") +
       `<div class="p-blurb" style="margin-bottom:14px">Every Claude Code session you've run from Lucid, changes and deploys across all projects. Click one to open its project chat; ✎ renames it.</div>` +
@@ -463,6 +481,23 @@
       const i = parseInt(b.dataset.ren, 10);
       const row = b.closest(".chatrow");
       renameUI(row.querySelector("[data-title]"), list[i], "cr-t");
+    });
+    view().querySelectorAll("[data-stop]").forEach(b => b.onclick = async (e) => {
+      e.stopPropagation(); b.disabled = true;
+      try { await api("/api/agent/jobs/" + b.dataset.stop + "/stop", { method: "POST" }); toast("Stopping session…"); }
+      catch (_) { toast("Couldn't stop"); b.disabled = false; }
+      setTimeout(() => { if (location.hash.startsWith("#/chats")) showChats(); }, 2500);
+    });
+    // delete: two-click arm, no native confirm dialogs
+    view().querySelectorAll("[data-del]").forEach(b => b.onclick = async (e) => {
+      e.stopPropagation();
+      if (!b.dataset.armed) {
+        b.dataset.armed = "1"; b.textContent = "sure?";
+        setTimeout(() => { b.dataset.armed = ""; b.textContent = "✕"; }, 3000);
+        return;
+      }
+      try { await api("/api/agent/jobs/" + b.dataset.del, { method: "DELETE" }); toast("Deleted"); _chats = null; showChats(); }
+      catch (_) { toast("Couldn't delete"); }
     });
     // keep the page fresh while anything is running
     if (list.some(isLive)) setTimeout(() => { if (location.hash.startsWith("#/chats")) showChats(); }, 5000);
@@ -636,6 +671,8 @@
             <label class="btn ghost sm" for="askShot" style="cursor:pointer" title="Attach a screenshot so the agent can see what you mean">📎 Screenshot</label>
             <input id="askShot" type="file" accept="image/*" style="display:none" />
             <span id="askShotName" class="soft" style="font-size:12px"></span>
+            <label class="ctog" id="contWrap" style="display:none" title="Reply into the previous session so it remembers the context"><input type="checkbox" id="contSess" checked /> ⟳ Continue last session</label>
+            <label class="ctog" id="pbWrap" style="display:none" title="Prepend your Beliefs playbook so the session builds the way you build"><input type="checkbox" id="usePb" checked /> ✦ Use my playbook</label>
             <button class="btn primary" id="askRun" style="margin-left:auto">▷ Make the change &amp; deploy</button></div>
         </div></div>
         <div class="panel deploypanel"><h2>Deploy</h2>
@@ -719,19 +756,48 @@
     if (!run) return;
     const ta = document.getElementById("askText"), thread = document.getElementById("chatThread");
     const shot = document.getElementById("askShot"), shotName = document.getElementById("askShotName");
-    let shotData = "";
+    let shotData = "", lastCli = null;
     const controls = { disable: () => { run.disabled = true; ta.disabled = true; }, enable: () => { run.disabled = false; ta.disabled = false; } };
 
     // a live session appended to the thread: user bubble + streaming slot
     const appendLiveSess = (reqText) => {
       const th = document.getElementById("chatThread"); if (!th) return document.createElement("div");
       const empty = th.querySelector(".sc-empty"); if (empty) empty.remove();
-      const wrap = el(`<div class="csess live"><div class="csess-head"><span class="cs-title">${h((reqText || "Session").split("\n")[0].slice(0, 58))}</span><span class="cs-meta">now · running</span></div>
+      const wrap = el(`<div class="csess live"><div class="csess-head"><span class="cs-title">${h((reqText || "Session").split("\n")[0].slice(0, 58))}</span>
+        <button class="icbtn cs-stop" style="display:none" title="Stop this session">⏹ Stop</button>
+        <span class="cs-meta">now · running</span></div>
         <div class="cmsg user"><div class="bubble">${h((reqText || "").slice(0, 700))}</div></div>
         <div class="cmsg agent"><div class="liveout"></div></div></div>`);
       th.appendChild(wrap);
       th.scrollTop = th.scrollHeight;
       return wrap.querySelector(".liveout");
+    };
+    // show + wire the ⏹ on a live session once we know its job id
+    const wireStop = (slot, jobId) => {
+      const wrap = slot && slot.closest(".csess"); if (!wrap) return;
+      const b = wrap.querySelector(".cs-stop"); if (!b) return;
+      b.style.display = "";
+      b.onclick = async () => {
+        b.disabled = true;
+        try { await api("/api/agent/jobs/" + jobId + "/stop", { method: "POST" }); toast("Stopping session…"); }
+        catch (_) { toast("Couldn't stop"); b.disabled = false; }
+      };
+    };
+    // a finished live turn leaves the thread; history re-render takes over
+    const finishLive = (slot) => { const w = slot && slot.closest(".csess"); if (w) w.remove(); refresh(); };
+
+    // watch-only attach: a session started on another device/tab streams
+    // here too (we don't own its deploy chain, we just show the terminal)
+    const watchLive = (j) => {
+      const slot = appendLiveSess(j.request || "Session");
+      const wrap = slot.closest(".csess"); if (wrap) wrap.dataset.sess = j.id;
+      wireStop(slot, j.id);
+      pollJob(j.id, (jj) => {
+        const active = jj.status === "queued" || jj.status === "running";
+        slot.innerHTML = `<div class="fixstages"><div class="askstatus">${active ? '<span class="spin sm"></span>' : (jj.status === "done" ? "✓ " : "⚠ ")}${jj.kind === "deploy" ? "Deploying" : "Working"}${active ? "…" : " · " + h(jj.status)}</div>
+          ${jj.log ? `<pre class="asklog">${h((jj.log || "").slice(-4000))}</pre>` : ""}</div>`;
+        const lg = slot.querySelector(".asklog"); if (lg) lg.scrollTop = lg.scrollHeight;
+      }).then(() => { if (wrap) wrap.remove(); refresh(); });
     };
 
     // render past sessions (oldest → newest, like a chat)
@@ -749,17 +815,34 @@
         renameUI(b.closest(".csess-head").querySelector("[data-title]"), hist[parseInt(b.dataset.ren, 10)], "cs-title");
       });
       th.scrollTop = th.scrollHeight;
+      // sessions running elsewhere (other tab/device): stream them here too
+      const saved = getJob(pid);
+      jobs.filter(isLive).forEach(j => {
+        if (saved && saved.jobId === j.id) return;             // resumeJob owns it
+        if (th.querySelector(`[data-sess="${j.id}"]`)) return; // already attached
+        watchLive(j);
+      });
+      // continue-toggle: offer replying into the newest finished session
+      lastCli = (jobs.find(j => j.kind !== "deploy" && j.status === "done" && j.cli_session) || {}).cli_session || null;
+      const cw = document.getElementById("contWrap"); if (cw) cw.style.display = lastCli ? "" : "none";
     };
     const refresh = () => { _chats = null; paintSideChats(); renderThread(); };
     renderThread().then(() => {
       // re-attach to a session left running when the page was reloaded — as a
       // live chat turn (its history twin, if merged already, gets replaced)
+      let resSlot = null;
       resumeJob(pid, (j) => {
         const th = document.getElementById("chatThread");
         const dup = th && th.querySelector(`[data-sess="${j.id}"]`); if (dup) dup.remove();
-        return appendLiveSess(j.request || "Session");
-      }, controls, refresh);
+        resSlot = appendLiveSess(j.request || "Session");
+        return resSlot;
+      }, controls, () => finishLive(resSlot), (jid) => wireStop(resSlot, jid));
     });
+    // playbook toggle appears once we know a playbook exists
+    api("/api/beliefs").then(d => {
+      const pw = document.getElementById("pbWrap");
+      if (pw && (d.text || "").trim()) pw.style.display = "";
+    }).catch(() => {});
 
     if (shot) shot.onchange = async () => {
       const f = shot.files && shot.files[0];
@@ -770,9 +853,15 @@
       const text = ta.value.trim();
       if (!text) { toast("Describe the change first"); return; }
       ta.value = "";
+      const cont = document.getElementById("contSess"), pb = document.getElementById("usePb");
+      const body = {
+        text, image: shotData,
+        resume: (cont && cont.checked && lastCli) ? lastCli : "",
+        playbook: !!(pb && pb.checked && document.getElementById("pbWrap").style.display !== "none"),
+      };
       const slot = appendLiveSess(text);
-      chainChangeDeploy(pid, { endpoint: "/api/businesses/" + encodeURIComponent(pid) + "/request", body: { text, image: shotData } }, slot, controls)
-        .then(refresh);
+      chainChangeDeploy(pid, { endpoint: "/api/businesses/" + encodeURIComponent(pid) + "/request", body, onJob: (jid) => wireStop(slot, jid) }, slot, controls)
+        .then(() => finishLive(slot));
       shotData = ""; shotName.textContent = ""; if (shot) shot.value = "";
     };
     // "Make all N changes" — combine every unread note into one change, deploy

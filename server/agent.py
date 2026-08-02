@@ -134,7 +134,8 @@ def _persist(rec: dict) -> None:
                 hist = json.load(f)
         slim = {k: rec[k] for k in ("id", "kind", "project", "project_name",
                                     "title", "status", "started", "finished",
-                                    "changed", "prod", "committed") if k in rec}
+                                    "changed", "prod", "committed",
+                                    "cli_session") if k in rec}
         # keep enough of the session to re-open it as a chat after a restart:
         # the request (the "user message") and the tail of the terminal log.
         slim["request"] = (rec.get("request") or "")[:4000]
@@ -424,6 +425,9 @@ def _agent_deploy(rec: dict, dep: dict) -> None:
     except Exception as e:
         rec["status"] = "error"
         rec["log"] += "\n[deploy] %s" % str(e)[:300]
+    if rec.get("stopped"):
+        rec["status"] = "stopped"
+        rec["log"] += "\n[deploy] stopped by you"
     urls = _URL_RE.findall(rec["log"])
     if urls:
         rec["url_out"] = urls[-1].rstrip(".,)")
@@ -457,15 +461,23 @@ def _tool_line(name: str, inp: dict) -> str:
     return "→ %s" % name
 
 
-def _stream_claude(rec, exe, prompt, cwd, env, permission_mode="acceptEdits"):
+def _stream_claude(rec, exe, prompt, cwd, env, permission_mode="acceptEdits",
+                   resume=""):
     """Run the Claude Code CLI with streaming JSON output and append readable
     progress to rec['log'] LIVE, so the UI shows work as it happens instead of
-    a frozen 'cloning…' until the whole session finishes. Returns exit code."""
+    a frozen 'cloning…' until the whole session finishes. Returns exit code.
+
+    resume: a CLI session id to continue, so a chat reply keeps the context
+    of the previous session instead of starting cold."""
+    args = [exe, "-p", "--model", MODEL, "--permission-mode", permission_mode,
+            "--output-format", "stream-json", "--verbose"]
+    if resume:
+        args += ["--resume", resume]
     proc = subprocess.Popen(
-        [exe, "-p", "--model", MODEL, "--permission-mode", permission_mode,
-         "--output-format", "stream-json", "--verbose"],
+        args,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd, env=env)
+    rec["_proc"] = proc   # live handle so stop() can kill the session
     timed_out = {"v": False}
 
     def _kill():
@@ -493,6 +505,12 @@ def _stream_claude(rec, exe, prompt, cwd, env, permission_mode="acceptEdits"):
             except Exception:
                 continue
             t = ev.get("type")
+            if t == "system" and ev.get("subtype") == "init":
+                # the CLI session id — lets the next chat message in this
+                # project RESUME this session with its full context
+                sid = ev.get("session_id") or ""
+                if sid:
+                    rec["cli_session"] = sid
             if t == "assistant":
                 for b in ev.get("message", {}).get("content", []):
                     bt = b.get("type")
@@ -510,9 +528,51 @@ def _stream_claude(rec, exe, prompt, cwd, env, permission_mode="acceptEdits"):
         proc.wait()
     finally:
         killer.cancel()
+        rec.pop("_proc", None)
     if timed_out["v"]:
         raise _JobTimeout()
     return proc.returncode
+
+
+def stop(job_id: str) -> dict:
+    """Kill a running session — the ⏹ Stop button. The job thread notices the
+    dead process, marks the record 'stopped', and persists it as usual."""
+    with _lock:
+        rec = _jobs.get(job_id)
+    if not rec:
+        return {"ok": False, "error": "no such live job"}
+    if rec.get("finished"):
+        return {"ok": False, "error": "already finished"}
+    rec["stopped"] = True
+    p = rec.get("_proc")
+    if p is None:
+        return {"ok": False, "error": "this job can't be stopped mid-run"}
+    try:
+        p.kill()
+    except Exception:
+        pass
+    rec["log"] += "\n[agent] stop requested; ending the session…"
+    return {"ok": True}
+
+
+def delete_job(job_id: str) -> dict:
+    """Remove a finished session from the chats history."""
+    with _lock:
+        rec = _jobs.get(job_id)
+        if rec and not rec.get("finished"):
+            return {"ok": False, "error": "stop it before deleting"}
+        _jobs.pop(job_id, None)
+    try:
+        path = os.path.join(str(settings.data_path), HISTORY_FILE)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                hist = json.load(f)
+            hist = [hh for hh in hist if hh.get("id") != job_id]
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(hist, f, indent=2)
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 def _run(job_id: str) -> None:
@@ -540,11 +600,12 @@ def _run(job_id: str) -> None:
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("ANTHROPIC_")
            and not k.startswith("CLAUDE_CODE_USE_")}
-    prompt = rec["request"]
+    prompt = rec.get("prompt") or rec["request"]
     rec["status"] = "running"
     try:
-        rc = _stream_claude(rec, exe, prompt, cwd, env)
-        if rc not in (0, None):
+        rc = _stream_claude(rec, exe, prompt, cwd, env,
+                            resume=rec.get("resume", ""))
+        if rc not in (0, None) and not rec.get("stopped"):
             rec["log"] += "\n[agent] exit %s" % rc
     except _JobTimeout:
         rec["status"] = "timeout"
@@ -552,6 +613,9 @@ def _run(job_id: str) -> None:
     except Exception as e:
         rec["status"] = "error"
         rec["log"] += "\n[agent] %s" % str(e)[:300]
+    if rec.get("stopped"):
+        rec["status"] = "stopped"
+        rec["log"] += "\n[agent] session stopped by you"
     # what THIS session changed = working-tree delta vs the pre-session state
     # (not every pre-existing uncommitted file)
     after_status = _git(cwd, "status", "--porcelain").splitlines()
@@ -600,7 +664,11 @@ def _save_screenshot(job_id: str, image: str) -> str:
 
 
 def request_change(pid: str, text: str, image: str = "",
-                   seen_ids: list | None = None) -> dict:
+                   seen_ids: list | None = None, preamble: str = "",
+                   resume: str = "") -> dict:
+    """preamble: extra context prepended to the CLI prompt (e.g. the product
+    playbook) but NOT shown as the chat bubble. resume: CLI session id to
+    continue, so a reply keeps the previous session's context."""
     proj = project_for(pid)
     if not proj:
         return {"ok": False, "error": "unknown project"}
@@ -609,12 +677,16 @@ def request_change(pid: str, text: str, image: str = "",
     job_id = uuid.uuid4().hex[:12]
     text = text.strip()
     shot = _save_screenshot(job_id, image)
+    prompt = text
     if shot:
-        text += ("\n\nI attached a screenshot showing what I mean. Look at "
-                 "the image file at: %s" % shot)
+        prompt += ("\n\nI attached a screenshot showing what I mean. Look at "
+                   "the image file at: %s" % shot)
     rec = {"id": job_id, "project": pid, "project_name": proj["name"],
            "cwd": proj.get("cwd", ""), "url": proj.get("url", ""),
-           "orig_name": proj.get("orig_name", ""), "request": text,
+           "orig_name": proj.get("orig_name", ""),
+           "request": text + ("\n\n📎 screenshot attached" if shot else ""),
+           "prompt": (preamble or "") + prompt,
+           "resume": re.sub(r"[^0-9a-zA-Z-]", "", resume or "")[:64],
            "title": _default_title(text),
            "status": "queued", "log": "", "changed": [],
            "seen_ids": list(seen_ids or []),
@@ -648,7 +720,7 @@ def job(job_id: str) -> dict | None:
     out = {k: rec[k] for k in ("id", "kind", "project", "project_name",
                                "request", "title", "status", "log", "changed",
                                "committed", "prod", "started",
-                               "finished") if k in rec}
+                               "finished", "cli_session") if k in rec}
     # deploy result URL (kept separate from the input GitHub url)
     out["url"] = rec.get("url_out", "") if rec.get("kind") == "deploy" else rec.get("url", "")
     return out
@@ -677,7 +749,7 @@ def history(pid: str | None = None, limit: int = 30,
             e = {k: lv.get(k) for k in
                  ("id", "kind", "project", "project_name", "title",
                   "status", "started", "finished", "changed", "prod",
-                  "committed", "url")}
+                  "committed", "url", "cli_session")}
             e["request"] = (lv.get("request") or "")[:4000]
             e["log"] = (lv.get("log") or "")[-6000:]
             hist.insert(0, e)
