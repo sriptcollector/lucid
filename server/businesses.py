@@ -295,6 +295,10 @@ def classify(recs: list, force: bool = False) -> dict:
     todo = []
     for r in recs:
         c = cache.get(r.id)
+        # a manual choice is pinned: the auto-classifier never overrides it,
+        # not even on a forced full re-sort.
+        if c and c.get("manual"):
+            continue
         if force or not c or c.get("sig") != _sig(r):
             todo.append(r)
     for i in range(0, len(todo), 12):
@@ -308,6 +312,30 @@ def classify(recs: list, force: bool = False) -> dict:
     with _lock:
         _save(ASSIGN_CACHE, cache)
     return {r.id: (cache.get(r.id) or {}).get("project") for r in recs}
+
+
+def set_assignment(rec, pid: Optional[str]) -> dict:
+    """Manually file ONE note under a project (pid) or Unsorted (pid=None).
+
+    The choice is marked ``manual`` so :func:`classify` (including a forced
+    full re-sort) leaves it alone forever. Distilling the note's project-only
+    focus is kicked to a background thread so this call returns instantly and
+    the project's Copy / Compile has this note's content ready shortly after."""
+    valid = {p["id"] for p in all_projects()}
+    target = pid if (pid and pid in valid) else None
+    with _lock:
+        cache = _load(ASSIGN_CACHE, {})
+        cache[rec.id] = {"project": target, "sig": _sig(rec), "manual": True}
+        _save(ASSIGN_CACHE, cache)
+    if target:
+        def _distill():
+            try:
+                focus_summaries(target, [rec], generate=True)
+            except Exception:
+                pass
+        threading.Thread(target=_distill, name="lucid-assign-focus",
+                         daemon=True).start()
+    return {"ok": True, "project": target, "manual": True}
 
 
 # --------------------------------------------------------- copy tracking
@@ -527,12 +555,19 @@ def compile_projects(pids: list, recs: list, recent: int = 0,
         blocks = []
         for r in mine:
             d = focus.get(r.id)
-            if not isinstance(d, dict):
-                continue
-            body = _render_focus(d, sections)
-            if body:
-                hdr = (r.analysis.headline if r.analysis else "") or ""
-                blocks.append((hdr + "\n" if hdr else "") + body)
+            if isinstance(d, dict):
+                body = _render_focus(d, sections)
+                if body:
+                    hdr = (r.analysis.headline if r.analysis else "") or ""
+                    blocks.append((hdr + "\n" if hdr else "") + body)
+                    continue
+            # No distilled focus (CLI hiccup, a still-warming note, or one the
+            # distiller flagged 'NONE' after a manual filing): fall back to the
+            # note's own clean summary so a selected project with real notes is
+            # NEVER silently dropped. This is what makes Compile reliable.
+            fb = note_summary(r)
+            if fb:
+                blocks.append(fb)
         if not blocks:
             continue
         head = "## " + proj["name"]

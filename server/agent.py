@@ -42,7 +42,9 @@ MODEL = "claude-opus-4-8"
 JOB_TIMEOUT = 1800            # 30 min hard cap per session
 DEPLOY_TIMEOUT = 900
 HISTORY_FILE = "agent_jobs.json"
-_URL_RE = re.compile(r"https?://[^\s'\"]+\.(?:vercel\.app|pages\.dev|workers\.dev)[^\s'\"]*")
+_URL_RE = re.compile(
+    r"https?://[^\s'\"]+\.(?:vercel\.app|pages\.dev|workers\.dev|netlify\.app|"
+    r"github\.io|fly\.dev|onrender\.com|railway\.app|surge\.sh)[^\s'\"]*")
 
 _lock = threading.RLock()
 _jobs: dict[str, dict] = {}   # job_id -> record (in-memory, live logs)
@@ -118,6 +120,11 @@ def project_for(pid: str) -> dict | None:
     return None
 
 
+def _default_title(text: str) -> str:
+    t = " ".join((text or "").split())
+    return (t[:57] + "…") if len(t) > 58 else (t or "Session")
+
+
 def _persist(rec: dict) -> None:
     try:
         path = os.path.join(str(settings.data_path), HISTORY_FILE)
@@ -125,15 +132,48 @@ def _persist(rec: dict) -> None:
         if os.path.exists(path):
             with open(path, encoding="utf-8") as f:
                 hist = json.load(f)
-        slim = {k: rec[k] for k in ("id", "project", "project_name", "request",
-                                    "status", "started", "finished",
-                                    "changed") if k in rec}
+        slim = {k: rec[k] for k in ("id", "kind", "project", "project_name",
+                                    "title", "status", "started", "finished",
+                                    "changed", "prod", "committed") if k in rec}
+        # keep enough of the session to re-open it as a chat after a restart:
+        # the request (the "user message") and the tail of the terminal log.
+        slim["request"] = (rec.get("request") or "")[:4000]
+        slim["log"] = (rec.get("log") or "")[-6000:]
+        slim["url"] = rec.get("url_out", "") if rec.get("kind") == "deploy" else ""
         hist = [h for h in hist if h.get("id") != rec["id"]]
         hist.insert(0, slim)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(hist[:200], f, indent=2)
     except Exception:
         pass
+
+
+def rename(job_id: str, title: str) -> dict:
+    """Rename a session (live or finished) — powers the chats bar."""
+    title = " ".join((title or "").split())[:80]
+    if not title:
+        return {"ok": False, "error": "empty title"}
+    found = False
+    with _lock:
+        if job_id in _jobs:
+            _jobs[job_id]["title"] = title
+            found = True
+    try:
+        path = os.path.join(str(settings.data_path), HISTORY_FILE)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                hist = json.load(f)
+            for hh in hist:
+                if hh.get("id") == job_id:
+                    hh["title"] = title
+                    found = True
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(hist, f, indent=2)
+    except Exception:
+        pass
+    if not found:
+        return {"ok": False, "error": "no such job"}
+    return {"ok": True, "title": title}
 
 
 _PAGES_CACHE = {"ts": 0.0, "projects": []}
@@ -248,12 +288,12 @@ def detect_deploy(cwd: str, orig_name: str = "") -> dict:
                     "preview": base + ["--branch", "preview"],
                     "prod": base + ["--branch", "production"],
                     "note": "→ Cloudflare Pages project '%s'" % proj}
-        return {"method": "cloudflare-pages", "ready": False,
-                "note": "static site detected, but no Cloudflare Pages project "
-                        "matches this repo name — create one (named like the "
-                        "repo) so deploys are automatic"}
-    return {"method": "none",
-            "note": "no Vercel or Cloudflare config found in this repo"}
+    # No standard config. NEVER a dead end: a Claude Code session works out
+    # the deploy (creates the Pages project, builds first, whatever it takes)
+    # and runs it — the same workaround a person at the terminal would find.
+    return {"method": "agent", "ready": True,
+            "note": "no standard config, so a Claude Code session figures "
+                    "out the deploy and runs it"}
 
 
 def request_deploy(pid: str, prod: bool = False) -> dict:
@@ -265,6 +305,7 @@ def request_deploy(pid: str, prod: bool = False) -> dict:
            "project_name": proj["name"], "cwd": proj.get("cwd", ""),
            "url": proj.get("url", ""), "orig_name": proj.get("orig_name", ""),
            "request": ("Production deploy" if prod else "Preview deploy"),
+           "title": ("Production deploy" if prod else "Preview deploy"),
            "cmd": None, "prod": prod,
            "status": "queued", "log": "", "changed": [], "url_out": "",
            "started": time.time(), "finished": 0.0}
@@ -295,11 +336,7 @@ def _run_deploy(rec: dict) -> None:
     rec["cmd"] = dep.get("prod" if rec.get("prod") else "preview")
     rec["request"] += " (" + dep.get("method", "?") + ")"
     if not rec["cmd"]:
-        rec["status"] = "error"
-        rec["log"] += "\n[deploy] %s" % (dep.get("note") or "no deploy method found")
-        rec["finished"] = time.time()
-        _persist(rec)
-        return
+        return _agent_deploy(rec, dep)
     try:
         # On Windows, `vercel`/`npx`/`wrangler` are .cmd shims that a bare
         # shell=False exec can't resolve (FileNotFoundError). Run them through
@@ -328,6 +365,79 @@ def _run_deploy(rec: dict) -> None:
     _persist(rec)
 
 
+def _agent_deploy(rec: dict, dep: dict) -> None:
+    """No (working) deploy config — do what a person at the terminal would:
+    open a Claude Code session in the repo and have it work out the deploy,
+    set anything up that's missing, and run it. The old behaviour was a dead
+    'no Vercel or Cloudflare config found' error; this is the workaround."""
+    exe = _claude()
+    if not exe:
+        rec["status"] = "error"
+        rec["log"] += "\n[deploy] %s (and the Claude CLI isn't available to " \
+                      "work around it)" % (dep.get("note") or "no deploy method")
+        rec["finished"] = time.time()
+        _persist(rec)
+        return
+    prod = bool(rec.get("prod"))
+    name = rec.get("orig_name") or rec.get("project_name") or "this-repo"
+    prompt = (
+        "You are deploying the repository in the current working directory. "
+        "Goal: get it live as a %s deploy. There is no committed deploy "
+        "config, so figure out the right way to deploy it and DO IT. Do not "
+        "stop at analysis.\n\n"
+        "Work through these in order:\n"
+        "1. If a .vercel folder or vercel.json exists, use the Vercel CLI "
+        "(`vercel deploy --yes`%s).\n"
+        "2. Check the logged-in Cloudflare account for an existing Pages "
+        "project that matches this repo (`npx -y wrangler pages project "
+        "list`); if one fits, deploy to it with `npx -y wrangler pages "
+        "deploy <dir> --project-name <project> --branch %s`.\n"
+        "3. If this is a static site or has a build script: install deps and "
+        "build if needed (npm install / npm run build), create a Cloudflare "
+        "Pages project named like the repo (e.g. `npx -y wrangler pages "
+        "project create %s --production-branch=main`), then deploy the "
+        "output directory to it with the branch flag above.\n"
+        "4. If none of that fits (server app, worker, etc.), pick the "
+        "simplest platform already authenticated on this machine (wrangler / "
+        "vercel / gh) and make it work.\n\n"
+        "Rules: a preview deploy must NOT touch production. Do not push to "
+        "git. When done, print the final deployed URL alone on the last "
+        "line." % (
+            "PRODUCTION" if prod else "PREVIEW",
+            ", add `--prod` since this is production" if prod else "",
+            "production" if prod else "preview",
+            re.sub(r"[^a-z0-9-]", "-", name.lower())[:50].strip("-") or "site"))
+    rec["log"] += ("[deploy] no standard config. Starting a Claude Code "
+                   "session to work out the deploy…\n")
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith("ANTHROPIC_")
+           and not k.startswith("CLAUDE_CODE_USE_")}
+    try:
+        rc = _stream_claude(rec, exe, prompt, rec["cwd"], env,
+                            permission_mode="bypassPermissions")
+        rec["status"] = "done" if rc in (0, None) else "error"
+        if rc not in (0, None):
+            rec["log"] += "\n[deploy] exit %s" % rc
+    except _JobTimeout:
+        rec["status"] = "timeout"
+        rec["log"] += "\n[deploy] session exceeded %ds and was stopped" % JOB_TIMEOUT
+    except Exception as e:
+        rec["status"] = "error"
+        rec["log"] += "\n[deploy] %s" % str(e)[:300]
+    urls = _URL_RE.findall(rec["log"])
+    if urls:
+        rec["url_out"] = urls[-1].rstrip(".,)")
+    else:
+        # the session was told to end with the URL alone on the last line
+        m = re.search(r"(?im)^\s*(https?://\S+)\s*$", rec["log"][-1500:])
+        if m:
+            rec["url_out"] = m.group(1).rstrip(".,)")
+    if rec["status"] == "done" and not rec["url_out"]:
+        rec["log"] += "\n[deploy] finished, but no URL was printed (check the log above)"
+    rec["finished"] = time.time()
+    _persist(rec)
+
+
 class _JobTimeout(Exception):
     pass
 
@@ -347,12 +457,12 @@ def _tool_line(name: str, inp: dict) -> str:
     return "→ %s" % name
 
 
-def _stream_claude(rec, exe, prompt, cwd, env):
+def _stream_claude(rec, exe, prompt, cwd, env, permission_mode="acceptEdits"):
     """Run the Claude Code CLI with streaming JSON output and append readable
     progress to rec['log'] LIVE, so the UI shows work as it happens instead of
     a frozen 'cloning…' until the whole session finishes. Returns exit code."""
     proc = subprocess.Popen(
-        [exe, "-p", "--model", MODEL, "--permission-mode", "acceptEdits",
+        [exe, "-p", "--model", MODEL, "--permission-mode", permission_mode,
          "--output-format", "stream-json", "--verbose"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd, env=env)
@@ -505,6 +615,7 @@ def request_change(pid: str, text: str, image: str = "",
     rec = {"id": job_id, "project": pid, "project_name": proj["name"],
            "cwd": proj.get("cwd", ""), "url": proj.get("url", ""),
            "orig_name": proj.get("orig_name", ""), "request": text,
+           "title": _default_title(text),
            "status": "queued", "log": "", "changed": [],
            "seen_ids": list(seen_ids or []),
            "started": time.time(), "finished": 0.0}
@@ -523,9 +634,19 @@ def request_change(pid: str, text: str, image: str = "",
 def job(job_id: str) -> dict | None:
     rec = _jobs.get(job_id)
     if not rec:
+        # finished before a restart: recover the session from persisted
+        # history so old chats still open (request + log tail survive there)
+        try:
+            path = os.path.join(str(settings.data_path), HISTORY_FILE)
+            with open(path, encoding="utf-8") as f:
+                for hh in json.load(f):
+                    if hh.get("id") == job_id:
+                        return hh
+        except Exception:
+            pass
         return None
     out = {k: rec[k] for k in ("id", "kind", "project", "project_name",
-                               "request", "status", "log", "changed",
+                               "request", "title", "status", "log", "changed",
                                "committed", "prod", "started",
                                "finished") if k in rec}
     # deploy result URL (kept separate from the input GitHub url)
@@ -533,7 +654,8 @@ def job(job_id: str) -> dict | None:
     return out
 
 
-def history(pid: str | None = None, limit: int = 30) -> list:
+def history(pid: str | None = None, limit: int = 30,
+            include_log: bool = False) -> list:
     try:
         path = os.path.join(str(settings.data_path), HISTORY_FILE)
         if os.path.exists(path):
@@ -549,12 +671,19 @@ def history(pid: str | None = None, limit: int = 30) -> list:
     with _lock:
         keys = list(_jobs)
     live = [job(k) for k in keys]
-    seen = {h["id"] for h in hist}
+    seen = {h.get("id") for h in hist}
     for lv in live:
         if lv and lv["id"] not in seen:
-            hist.insert(0, {k: lv.get(k) for k in
-                            ("id", "project", "project_name", "request",
-                             "status", "started", "finished", "changed")})
+            e = {k: lv.get(k) for k in
+                 ("id", "kind", "project", "project_name", "title",
+                  "status", "started", "finished", "changed", "prod",
+                  "committed", "url")}
+            e["request"] = (lv.get("request") or "")[:4000]
+            e["log"] = (lv.get("log") or "")[-6000:]
+            hist.insert(0, e)
     if pid:
         hist = [h for h in hist if h.get("project") == pid]
-    return hist[:limit]
+    hist = hist[:limit]
+    if not include_log:
+        hist = [{k: v for k, v in h.items() if k != "log"} for h in hist]
+    return hist

@@ -27,3 +27,6 @@ bin/
 .DS_Store
 node_modules/
 .gstack/
+
+# --- Wrangler local cache ---
+.wrangler/

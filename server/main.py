@@ -34,7 +34,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import agent, backup, businesses, email_login, setup_service, storage, tunnel
+from . import agent, backup, beliefs, businesses, email_login, setup_service, storage, tunnel
 from .config import settings
 from .ingest import intake, plaud_cloud, telegram_bot, watcher
 from .models import Status
@@ -1131,6 +1131,21 @@ def note_seen(rec_id: str) -> dict:
     return {"ok": True}
 
 
+@app.post("/api/notes/{rec_id}/assign", dependencies=[Depends(auth)])
+async def note_assign(rec_id: str, request: Request) -> JSONResponse:
+    """Manually sort a note into a specific project folder, or to Unsorted.
+    Body: {project: <project id> | "" | "__unsorted"}. The choice is sticky —
+    the auto-sorter will not override it."""
+    rec = storage.get(rec_id)
+    if not rec:
+        raise HTTPException(404, "No such note")
+    body = await request.json()
+    pid = str(body.get("project") or "").strip()
+    if pid in ("", "__unsorted", "none", "null"):
+        pid = None
+    return JSONResponse(businesses.set_assignment(rec, pid))
+
+
 @app.get("/api/notes/{rec_id}/brief", dependencies=[Depends(auth)])
 def note_brief(rec_id: str) -> JSONResponse:
     """Clean, third-person dev/company briefing of the note (no personal
@@ -1207,8 +1222,48 @@ def agent_job(job_id: str) -> JSONResponse:
 
 
 @app.get("/api/agent/jobs", dependencies=[Depends(auth)])
-def agent_jobs(project: str = "") -> JSONResponse:
-    return JSONResponse({"jobs": agent.history(project or None)})
+def agent_jobs(project: str = "", logs: int = 0, limit: int = 30) -> JSONResponse:
+    """Recent sessions (changes + deploys). logs=1 includes each session's
+    terminal-log tail — used by the per-project chat thread."""
+    return JSONResponse({"jobs": agent.history(
+        project or None, limit=max(1, min(limit, 200)),
+        include_log=bool(logs))})
+
+
+@app.post("/api/agent/jobs/{job_id}/rename", dependencies=[Depends(auth)])
+async def agent_job_rename(job_id: str, request: Request) -> JSONResponse:
+    """Rename a session — powers the chats bar's inline rename."""
+    body = await request.json()
+    r = agent.rename(job_id, str(body.get("title") or ""))
+    if not r.get("ok"):
+        raise HTTPException(
+            404 if r.get("error") == "no such job" else 400,
+            r.get("error") or "rename failed")
+    return JSONResponse(r)
+
+
+@app.get("/api/beliefs", dependencies=[Depends(auth)])
+def beliefs_get() -> JSONResponse:
+    """The Beliefs page: Orion's pasted product playbook + beliefs
+    auto-extracted from his notes. Cache-based and instant; warms uncached
+    notes in the background (same pattern as Mental)."""
+    recs = storage.list_recordings(limit=500)
+    return JSONResponse(beliefs.index(recs))
+
+
+@app.post("/api/beliefs", dependencies=[Depends(auth)])
+async def beliefs_save(request: Request) -> dict:
+    body = await request.json()
+    beliefs.set_text(str(body.get("text") or ""))
+    return {"ok": True}
+
+
+@app.post("/api/beliefs/remove", dependencies=[Depends(auth)])
+async def beliefs_remove(request: Request) -> dict:
+    """Hide an auto-extracted belief (sticks across rescans)."""
+    body = await request.json()
+    beliefs.remove(str(body.get("text") or ""))
+    return {"ok": True}
 
 
 @app.get("/api/projects", dependencies=[Depends(auth)])
