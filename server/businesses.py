@@ -205,6 +205,7 @@ def _cli_json(prompt: str, timeout: int = 180) -> dict:
             [exe, "-p", "--output-format", "text"],
             input=prompt, capture_output=True, text=True,
             env=env, timeout=timeout,
+            encoding="utf-8", errors="replace",
             cwd=os.path.expanduser("~"))
         out = p.stdout or ""
         s, e = out.find("{"), out.rfind("}")
@@ -227,6 +228,7 @@ def _cli_text(prompt: str, timeout: int = 180) -> str:
         p = subprocess.run([exe, "-p", "--output-format", "text"],
                            input=prompt, capture_output=True, text=True,
                            env=env, timeout=timeout,
+                           encoding="utf-8", errors="replace",
                            cwd=os.path.expanduser("~"))
         return p.stdout or ""
     except Exception:
@@ -663,7 +665,8 @@ def github_repos(force: bool = False) -> list[dict]:
         p = subprocess.run(
             [exe, "repo", "list", "--limit", "300", "--json",
              "name,description,url,isPrivate,updatedAt"],
-            capture_output=True, text=True, timeout=90)
+            capture_output=True, text=True, timeout=90,
+            encoding="utf-8", errors="replace")
         repos = json.loads(p.stdout or "[]")
     except Exception:
         return _load(GITHUB_CACHE, {}).get("repos", [])

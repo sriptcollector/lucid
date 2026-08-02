@@ -319,7 +319,8 @@ def _cli_analyze(user_msg: str) -> Analysis:
         [exe, "-p", "--model", settings.analysis_model,
          "--output-format", "text"],
         input=prompt, env=env, cwd=os.path.expanduser("~"),
-        capture_output=True, text=True, timeout=600)
+        capture_output=True, text=True, timeout=600,
+        encoding="utf-8", errors="replace")
     out = p.stdout or ""
     s, e = out.find("{"), out.rfind("}")
     if s < 0 or e <= s:

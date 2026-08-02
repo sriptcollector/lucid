@@ -84,7 +84,8 @@ def ensure_local(proj: dict, log=None) -> str:
     try:
         if os.path.isdir(os.path.join(dest, ".git")):
             p = subprocess.run(["git", "pull", "--ff-only"], cwd=dest,
-                               capture_output=True, text=True, timeout=180)
+                               capture_output=True, text=True, timeout=180,
+                               encoding="utf-8", errors="replace")
             if p.returncode != 0 and log is not None:
                 log[0] += "[agent] git pull skipped: %s\n" % (
                     (p.stderr or "").strip()[:200])
@@ -92,7 +93,8 @@ def ensure_local(proj: dict, log=None) -> str:
             if log is not None:
                 log[0] += "[agent] cloning %s …\n" % name
             p = subprocess.run(["git", "clone", "--depth", "50", url, dest],
-                               capture_output=True, text=True, timeout=600)
+                               capture_output=True, text=True, timeout=600,
+                               encoding="utf-8", errors="replace")
             if p.returncode != 0 and log is not None:
                 # surface the real reason (private repo auth, bad url, …)
                 log[0] += "[agent] clone failed: %s\n" % (
@@ -107,7 +109,8 @@ def ensure_local(proj: dict, log=None) -> str:
 def _git(cwd: str, *args) -> str:
     try:
         p = subprocess.run(["git", *args], cwd=cwd, capture_output=True,
-                           text=True, timeout=30)
+                           text=True, timeout=30,
+                           encoding="utf-8", errors="replace")
         return (p.stdout or "").strip()
     except Exception:
         return ""
@@ -196,6 +199,7 @@ def _cf_pages_projects() -> list[str]:
         if sys.platform == "win32":
             cmd = subprocess.list2cmdline(cmd)
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
+                           encoding="utf-8", errors="replace",
                            shell=(sys.platform == "win32"))
         for line in (p.stdout or "").splitlines():
             # table rows: │ project-name │ domains │ …
@@ -345,10 +349,12 @@ def _run_deploy(rec: dict) -> None:
         if sys.platform == "win32":
             cmd = subprocess.list2cmdline(rec["cmd"])
             p = subprocess.run(cmd, cwd=rec["cwd"], capture_output=True,
-                               text=True, timeout=DEPLOY_TIMEOUT, shell=True)
+                               text=True, timeout=DEPLOY_TIMEOUT, shell=True,
+                               encoding="utf-8", errors="replace")
         else:
             p = subprocess.run(rec["cmd"], cwd=rec["cwd"], capture_output=True,
-                               text=True, timeout=DEPLOY_TIMEOUT, shell=False)
+                               text=True, timeout=DEPLOY_TIMEOUT, shell=False,
+                               encoding="utf-8", errors="replace")
         rec["log"] += (p.stdout or "") + ("\n" + p.stderr if p.stderr else "")
         m = _URL_RE.search(rec["log"])
         if m:
@@ -473,10 +479,14 @@ def _stream_claude(rec, exe, prompt, cwd, env, permission_mode="acceptEdits",
             "--output-format", "stream-json", "--verbose"]
     if resume:
         args += ["--resume", resume]
+    # encoding is EXPLICIT: without it, Windows decodes the pipe as cp1252
+    # ("charmap") and the whole session dies on the first multibyte UTF-8
+    # character the CLI prints (0x8f in an emoji killed real sessions).
     proc = subprocess.Popen(
         args,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd, env=env)
+        stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd, env=env,
+        encoding="utf-8", errors="replace")
     rec["_proc"] = proc   # live handle so stop() can kill the session
     timed_out = {"v": False}
 
